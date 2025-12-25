@@ -1,0 +1,8 @@
+ipykernel
+pandas
+requests
+tqdm
+seaborn
+wfdb
+h5py
+scikit-learn
