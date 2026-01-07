@@ -4,6 +4,7 @@ hparams.py
 wandb/*
 */wandb/*
 gorgonoid/*
+checkpoints/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

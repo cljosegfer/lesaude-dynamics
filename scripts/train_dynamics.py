@@ -169,8 +169,10 @@ def train(args):
         model.eval()
         val_loss_accum = 0.0
         
+        loop = tqdm(val_loader, desc=f"Validation")
+
         with torch.no_grad():
-            for batch in val_loader:
+            for batch in loop:
                 x_t = batch['waveform'].to(DEVICE).float()
                 x_next = batch['waveform_next'].to(DEVICE).float()
                 action = batch['action'].to(DEVICE)

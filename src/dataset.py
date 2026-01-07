@@ -104,9 +104,7 @@ class DynamicsDataset(Dataset):
         # # Transpose ECG for PyTorch Conv1d: (Time, Channels) -> (Channels, Time)
         # x_t = x_t.transpose(0, 1) 
         
-        # if not self.return_pairs:
-        #     # Classification Mode: Just return x, y
-        #     return {'waveform': x_t, 'icd': y_t.float()}
+
 
         # # 2. Load Future State (t+1)
         # # We are guaranteed that real_idx+1 is the same patient because of __init__ logic
@@ -120,11 +118,13 @@ class DynamicsDataset(Dataset):
         pair_labels = self.f_label['icd'][real_idx : real_idx + 2]
 
         x_t = torch.from_numpy(pair_data[0])
-        x_next = torch.from_numpy(pair_data[1])
         y_t = torch.from_numpy(pair_labels[0]).long()
-        y_next = torch.from_numpy(pair_labels[1]).long()
-
         x_t = x_t.transpose(0, 1)
+        if not self.return_pairs:
+            # Classification Mode: Just return x, y
+            return {'waveform': x_t, 'icd': y_t.float()}
+        x_next = torch.from_numpy(pair_data[1])
+        y_next = torch.from_numpy(pair_labels[1]).long()
         x_next = x_next.transpose(0, 1)
 
         # # 3. Compute Delta T
