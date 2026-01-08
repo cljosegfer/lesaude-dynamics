@@ -60,8 +60,8 @@ def train(args):
     # 1. Dataset (Classification Mode)
     print("Loading Dataset...")
     full_dataset = DynamicsDataset(
-        waveform_h5_path=args.waveform_h5_path,
-        label_h5_path=args.label_h5_path,
+        waveform_h5_path=os.path.join(DATA_ROOT, 'mimic_iv_ecg_waveforms.h5'),
+        label_h5_path=os.path.join(DATA_ROOT, 'mimic_iv_ecg_icd.h5'),
         return_pairs=False  # Crucial: Returns (x, y)
     )
     
@@ -163,11 +163,11 @@ def train(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--waveform_h5_path', type=str, required=True)
-    parser.add_argument('--label_h5_path', type=str, required=True)
+    # parser.add_argument('--waveform_h5_path', type=str, required=True)
+    # parser.add_argument('--label_h5_path', type=str, required=True)
     parser.add_argument('--epochs', type=int, default=30)
     parser.add_argument('--batch_size', type=int, default=128)
-    parser.add_argument('--lr', type=float, default=1e-3)
+    parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--subsample', action='store_true', help="Use 50% data like pretrain")
     
     args = parser.parse_args()

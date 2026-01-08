@@ -209,7 +209,7 @@ if __name__ == "__main__":
     
     # Hyperparameters
     parser.add_argument('--epochs', type=int, default=20)
-    parser.add_argument('--batch_size', type=int, default=64) # Adjust based on VRAM
+    parser.add_argument('--batch_size', type=int, default=128) # Adjust based on VRAM
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--weight_decay', type=float, default=1e-5)
     parser.add_argument('--num_workers', type=int, default=4)

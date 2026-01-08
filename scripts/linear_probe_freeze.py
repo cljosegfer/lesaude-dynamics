@@ -14,6 +14,7 @@ import numpy as np
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.dataset import DynamicsDataset
 from src.models import MedicalLatentDynamics
+from hparams import DATA_ROOT
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -77,8 +78,8 @@ def main(args):
     # 2. Data Loader (For Extraction)
     print("Initializing I/O...")
     dataset = DynamicsDataset(
-        waveform_h5_path=args.waveform_h5_path,
-        label_h5_path=args.label_h5_path,
+        waveform_h5_path=os.path.join(DATA_ROOT, 'mimic_iv_ecg_waveforms.h5'),
+        label_h5_path=os.path.join(DATA_ROOT, 'mimic_iv_ecg_icd.h5'),
         return_pairs=False
     )
     
@@ -153,8 +154,8 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--checkpoint_path', type=str, required=True)
-    parser.add_argument('--waveform_h5_path', type=str, required=True)
-    parser.add_argument('--label_h5_path', type=str, required=True)
+    parser.add_argument('--checkpoint_path', type=str, default='checkpoints/best_model.pth')
+    # parser.add_argument('--waveform_h5_path', type=str, required=True)
+    # parser.add_argument('--label_h5_path', type=str, required=True)
     args = parser.parse_args()
     main(args)
