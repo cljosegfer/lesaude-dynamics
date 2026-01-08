@@ -84,7 +84,7 @@ class DynamicsDataset(Dataset):
         if self.f_wave is None:
             # rdcc_nbytes: Raw Data Chunk Cache size. 
             # Default is 1MB. Increase to 4MB or 8MB to smooth out reads.
-            self.f_wave = h5py.File(self.wave_path, 'r', rdcc_nbytes=1024*1024*4)
+            self.f_wave = h5py.File(self.wave_path, 'r', rdcc_nbytes=1024*1024*16)
         if self.f_label is None:
             self.f_label = h5py.File(self.label_path, 'r')
 
@@ -117,13 +117,13 @@ class DynamicsDataset(Dataset):
         pair_data = self.f_wave['waveforms'][real_idx : real_idx + 2]
         pair_labels = self.f_label['icd'][real_idx : real_idx + 2]
 
-        x_t = torch.from_numpy(pair_data[0])
+        x_t = torch.from_numpy(pair_data[0]).float()
         y_t = torch.from_numpy(pair_labels[0]).long()
         x_t = x_t.transpose(0, 1)
         if not self.return_pairs:
             # Classification Mode: Just return x, y
             return {'waveform': x_t, 'icd': y_t.float()}
-        x_next = torch.from_numpy(pair_data[1])
+        x_next = torch.from_numpy(pair_data[1]).float()
         y_next = torch.from_numpy(pair_labels[1]).long()
         x_next = x_next.transpose(0, 1)
 
