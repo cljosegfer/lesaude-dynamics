@@ -118,11 +118,13 @@ def main(args):
 
     # 6. Training Loop (Super Fast)
     print(">>> Phase 2: Training Linear Classifier (In Memory)...")
+    best_val_auc = 0.0
+    best_epoch = 0
     for epoch in range(20): # You can run 20 epochs in seconds now
         probe.train()
         train_loss = 0
         
-        for x, y in tqdm(train_loader_fast):
+        for x, y in (train_loader_fast):
             optimizer.zero_grad()
             logits = probe(x)
             loss = criterion(logits, y)
@@ -135,7 +137,7 @@ def main(args):
         all_preds = []
         all_targets = []
         with torch.no_grad():
-            for x, y in tqdm(val_loader_fast):
+            for x, y in (val_loader_fast):
                 logits = probe(x)
                 all_preds.append(torch.sigmoid(logits).cpu().numpy())
                 all_targets.append(y.cpu().numpy())
@@ -143,12 +145,22 @@ def main(args):
         all_preds = np.concatenate(all_preds)
         all_targets = np.concatenate(all_targets)
         
-        try:
-            auroc = roc_auc_score(all_targets, all_preds, average='macro')
-        except:
-            auroc = 0.0
+        valid_class_indices = []
+        for i in range(all_targets.shape[1]):
+            if len(np.unique(all_targets[:, i])) > 1:
+                valid_class_indices.append(i)
+        
+        if len(valid_class_indices) > 0:
+            val_auc = roc_auc_score(all_targets[:, valid_class_indices], all_preds[:, valid_class_indices], average='macro')
+        else:
+            val_auc = 0.0
+        
+        if val_auc > best_val_auc:
+            best_val_auc = val_auc
+            best_epoch = epoch
             
-        print(f"Epoch {epoch+1:02d} | Loss: {train_loss/len(train_loader_fast):.4f} | Val AUROC: {auroc:.4f}")
+        print(f"Epoch {epoch+1:02d} | Loss: {train_loss/len(train_loader_fast):.4f} | Val AUROC: {val_auc:.4f}")
+    print(f"Best Val AUROC: {best_val_auc:.4f} at Epoch {best_epoch+1}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

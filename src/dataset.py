@@ -162,7 +162,9 @@ class DynamicsDataset(Dataset):
         # study_id_next = self.f_wave['study_id'][real_idx + 1]
         # is_same_stay = (study_id_t == study_id_next)
 
-        return {'waveform': x_t, 'waveform_next': x_next, 'action': action}
+        return {'waveform': x_t, 'waveform_next': x_next, 'action': action, 
+                'icd': y_t.float(),  # for online probing
+                }
 
     def get_weights_for_balanced_sampling(self):
         """
