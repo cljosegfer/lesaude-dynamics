@@ -123,7 +123,7 @@ def main(args):
 
     # 2. Data Loader (For Extraction)
     print("Initializing I/O...")
-    train_ds = DynamicsDataset(split='train', )
+    train_ds = DynamicsDataset(split='train', data_fraction=args.data_fraction, )
     val_ds = DynamicsDataset(split='val', return_pairs=args.return_pairs)
     test_ds = DynamicsDataset(split='test', return_pairs=args.return_pairs) # Add Test Set
     
@@ -175,7 +175,7 @@ def main(args):
     best_epoch = 0
     best_probe_state = None
 
-    for epoch in range(20): 
+    for epoch in tqdm(range(20)): 
         probe.train()
         train_loss = 0
         
@@ -215,7 +215,7 @@ def main(args):
             best_epoch = epoch
             best_probe_state = copy.deepcopy(probe.state_dict())
             
-        print(f"Epoch {epoch+1:02d} | Loss: {train_loss/len(train_loader_fast):.4f} | Val AUROC: {val_auc:.4f}")
+        # print(f"Epoch {epoch+1:02d} | Loss: {train_loss/len(train_loader_fast):.4f} | Val AUROC: {val_auc:.4f}")
     
     print(f"Best Val AUROC: {best_val_auc:.4f} at Epoch {best_epoch+1}")
 
@@ -271,5 +271,7 @@ if __name__ == "__main__":
     parser.add_argument('--n_bootstraps', type=int, default=1000, help="Number of bootstrap iterations for CI")
     parser.add_argument('--return_pairs', action='store_true', 
                         help="If set, uses ALL ECGs in test set. If not, uses only first ECG per stay.")
+    # dataset
+    parser.add_argument('--data_fraction', type=float, default=1.0)
     args = parser.parse_args()
     main(args)
