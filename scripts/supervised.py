@@ -29,35 +29,13 @@ from dataset.eval_dataset import MIMICLanceEvalDataset
 from models.resnet1d import ResNet1d
 
 
-class ECGDictDataset(Dataset):
-    """Wraps MIMICLanceEvalDataset to return dicts compatible with spt.Module.
-
-    Converts (5000, 12) row-major waveforms to (12, 5000) channel-first and
-    applies per-recording z-score normalisation per lead.
-    """
-
-    def __init__(self, base: MIMICLanceEvalDataset):
-        self.base = base
-
-    def __len__(self) -> int:
-        return len(self.base)
-
-    def __getitem__(self, i: int) -> dict:
-        x, y = self.base[i]
-        x = x.T  # (12, 5000)
-        mean = x.mean(dim=1, keepdim=True)
-        std = x.std(dim=1, keepdim=True).clamp(min=1e-6)
-        x = (x - mean) / std
-        return {"waveform": x, "label": y.float()}
-
-
 def _make_loader(ds: Dataset, batch_size: int, num_workers: int, shuffle: bool) -> DataLoader:
     return DataLoader(
         ds,
         batch_size=batch_size,
         shuffle=shuffle,
         num_workers=num_workers,
-        multiprocessing_context="spawn",
+        multiprocessing_context="spawn" if num_workers > 0 else None,
         drop_last=shuffle,
         pin_memory=True,
     )
@@ -65,15 +43,13 @@ def _make_loader(ds: Dataset, batch_size: int, num_workers: int, shuffle: bool) 
 
 @hydra.main(version_base="1.3", config_path="../configs", config_name="supervised")
 def main(cfg):
-    train_ds = ECGDictDataset(
-        MIMICLanceEvalDataset(cfg.lance_path, fold=cfg.fold, split="train", mode="monitoring")
-    )
-    val_ds = ECGDictDataset(
-        MIMICLanceEvalDataset(cfg.lance_path, fold=cfg.fold, split="val", mode="triage")
-    )
+    train_ds = MIMICLanceEvalDataset(cfg.lance_path, fold=cfg.fold, split="train", mode="monitoring", train_frac=cfg.train_frac, cache=cfg.cache)
+    val_ds = MIMICLanceEvalDataset(cfg.lance_path, fold=cfg.fold, split="val", mode="triage", cache=cfg.cache)
 
-    train_loader = _make_loader(train_ds, cfg.batch_size, cfg.num_workers, shuffle=True)
-    val_loader = _make_loader(val_ds, cfg.batch_size, cfg.num_workers, shuffle=False)
+    # cached datasets live entirely in RAM — spawn workers would replicate them
+    num_workers = 0 if cfg.cache else cfg.num_workers
+    train_loader = _make_loader(train_ds, cfg.batch_size, num_workers, shuffle=True)
+    val_loader = _make_loader(val_ds, cfg.batch_size, num_workers, shuffle=False)
     data_module = spt.data.DataModule(train=train_loader, val=val_loader)
 
     backbone = ResNet1d(in_channels=12, embedding_dim=cfg.embedding_dim)
