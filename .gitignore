@@ -45,6 +45,9 @@ outputs/
 logs/
 *.log
 *.sbatch
+environment*
+requirements_frozen*
+checkpoints/*
 
 # Machine-specific environment snapshot
 environment.json

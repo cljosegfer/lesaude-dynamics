@@ -7,7 +7,7 @@ MIMIC-IV-ECG, replicating the supervised baseline from the paper.
 Example
 -------
 HYDRA_FULL_ERROR=1 python scripts/supervised.py \
-    ++fold=1 ++max_epochs=100 ++batch_size=256 ++embedding_dim=256
+    ++max_epochs=100 ++batch_size=256 ++embedding_dim=256
 """
 
 import sys
@@ -23,9 +23,15 @@ from functools import partial
 from torch.utils.data import DataLoader, Dataset
 from lightning.pytorch.loggers import WandbLogger
 
+import torchmetrics
 import stable_pretraining as spt
 
-from dataset.eval_dataset import MIMICLanceEvalDataset
+
+class _MultilabelAUROC(torchmetrics.classification.MultilabelAUROC):
+    def update(self, preds, target):
+        super().update(preds, target.long())
+
+from dataset.dataset import MIMICLanceDataset
 from models.resnet1d import ResNet1d
 
 
@@ -43,8 +49,8 @@ def _make_loader(ds: Dataset, batch_size: int, num_workers: int, shuffle: bool) 
 
 @hydra.main(version_base="1.3", config_path="../configs", config_name="supervised")
 def main(cfg):
-    train_ds = MIMICLanceEvalDataset(cfg.lance_path, fold=cfg.fold, split="train", mode="monitoring", train_frac=cfg.train_frac, cache=cfg.cache)
-    val_ds = MIMICLanceEvalDataset(cfg.lance_path, fold=cfg.fold, split="val", mode="triage", cache=cfg.cache)
+    train_ds = MIMICLanceDataset(cfg.lance_path, split="train", mode="monitoring", train_frac=cfg.train_frac, cache=cfg.cache)
+    val_ds = MIMICLanceDataset(cfg.lance_path, split="val", mode="triage", cache=cfg.cache)
 
     # cached datasets live entirely in RAM — spawn workers would replicate them
     num_workers = 0 if cfg.cache else cfg.num_workers
@@ -60,6 +66,15 @@ def main(cfg):
         batch["logits"] = self.projector(batch["embedding"])
         batch["loss"] = F.binary_cross_entropy_with_logits(
             batch["logits"], batch["label"]
+        )
+        is_train = stage == "fit"
+        self.log(
+            "train/loss" if is_train else "val/loss",
+            batch["loss"],
+            on_step=is_train,
+            on_epoch=True,
+            prog_bar=True,
+            sync_dist=True,
         )
         return batch
 
@@ -78,12 +93,24 @@ def main(cfg):
         },
     )
 
-    lr_monitor = pl.pytorch.callbacks.LearningRateMonitor(logging_interval="step")
-    logger = WandbLogger(project=cfg.wandb_project)
+    auroc_probe = spt.callbacks.OnlineProbe(
+        module,
+        name="auroc",
+        input="embedding",
+        target="label",
+        probe=torch.nn.Linear(cfg.embedding_dim, 76),
+        loss=torch.nn.BCEWithLogitsLoss(),
+        metrics=_MultilabelAUROC(num_labels=76, average="macro"),
+    )
+
+    logger = WandbLogger(project=cfg.wandb_project) if cfg.use_wandb else False
+    callbacks = [auroc_probe]
+    if cfg.use_wandb:
+        callbacks.append(pl.pytorch.callbacks.LearningRateMonitor(logging_interval="step"))
     trainer = pl.Trainer(
         max_epochs=cfg.max_epochs,
         num_sanity_val_steps=1,
-        callbacks=[lr_monitor],
+        callbacks=callbacks,
         precision="16-mixed",
         logger=logger,
         sync_batchnorm=True,
@@ -97,7 +124,9 @@ def main(cfg):
         seed=cfg.seed,
     )
     manager()
-    manager.validate()
+
+    if cfg.ckpt_path:
+        manager.save_checkpoint(cfg.ckpt_path)
 
 
 if __name__ == "__main__":
