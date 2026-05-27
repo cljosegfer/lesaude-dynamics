@@ -16,6 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import hydra
+from hydra.utils import get_original_cwd
 import torch
 import torch.nn.functional as F
 import lightning as pl
@@ -33,6 +34,7 @@ class _MultilabelAUROC(torchmetrics.classification.MultilabelAUROC):
 
 from dataset.dataset import MIMICLanceDataset
 from models.resnet1d import ResNet1d
+from utils import check_tcp
 
 
 def _make_loader(ds: Dataset, batch_size: int, num_workers: int, shuffle: bool) -> DataLoader:
@@ -42,6 +44,8 @@ def _make_loader(ds: Dataset, batch_size: int, num_workers: int, shuffle: bool) 
         shuffle=shuffle,
         num_workers=num_workers,
         multiprocessing_context="spawn" if num_workers > 0 else None,
+        persistent_workers=num_workers > 0,  # keeps workers alive between epochs
+        prefetch_factor=4 if num_workers > 0 else None,  # batches queued per worker
         drop_last=shuffle,
         pin_memory=True,
     )
@@ -103,10 +107,29 @@ def main(cfg):
         metrics=_MultilabelAUROC(num_labels=76, average="macro"),
     )
 
-    logger = WandbLogger(project=cfg.wandb_project) if cfg.use_wandb else False
+    logger = False
     callbacks = [auroc_probe]
     if cfg.use_wandb:
-        callbacks.append(pl.pytorch.callbacks.LearningRateMonitor(logging_interval="step"))
+        if check_tcp():
+            logger = WandbLogger(project=cfg.wandb_project)
+            callbacks.append(pl.pytorch.callbacks.LearningRateMonitor(logging_interval="step"))
+        else:
+            print("WARNING: wandb unreachable (TCP check failed) — running without logger")
+    callbacks.append(pl.pytorch.callbacks.EarlyStopping(
+        monitor='val/loss', 
+        patience=20, 
+        mode='min', 
+        ))
+    if cfg.ckpt_path:
+        ckpt = Path(get_original_cwd()) / cfg.ckpt_path
+        callbacks.append(pl.pytorch.callbacks.ModelCheckpoint(
+            monitor='val/loss', 
+            dirpath=str(ckpt.parent),
+            filename=ckpt.stem,
+            mode="min",
+            save_weights_only=True,
+            ))
+    
     trainer = pl.Trainer(
         max_epochs=cfg.max_epochs,
         num_sanity_val_steps=1,
@@ -114,8 +137,13 @@ def main(cfg):
         precision="16-mixed",
         logger=logger,
         sync_batchnorm=True,
-        enable_checkpointing=False,
     )
+
+    # Disable spt's cache_dir run-dir management so that ModelCheckpoint.dirpath
+    # is respected as-is. Without this, spt forcibly redirects every
+    # ModelCheckpoint to ~/.cache/stable-pretraining/runs/<date>/<time>/<hash>/checkpoints/.
+    # spt.set(cache_dir=None)
+    spt.set(cache_dir=cfg.spt_runs_dir)
 
     manager = spt.Manager(
         trainer=trainer,
@@ -124,9 +152,6 @@ def main(cfg):
         seed=cfg.seed,
     )
     manager()
-
-    if cfg.ckpt_path:
-        manager.save_checkpoint(cfg.ckpt_path)
 
 
 if __name__ == "__main__":

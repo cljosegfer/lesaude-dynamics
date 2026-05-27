@@ -48,6 +48,8 @@ logs/
 environment*
 requirements_frozen*
 checkpoints/*
+runs/*
+gorgonoid/*
 
 # Machine-specific environment snapshot
 environment.json
