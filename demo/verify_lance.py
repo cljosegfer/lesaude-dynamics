@@ -25,7 +25,6 @@ from tqdm import tqdm
 # Make src/ importable without pip install
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from dataset.dataset import MIMICLanceDataset
-from dataset.eval_dataset import MIMICLanceEvalDataset
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -205,8 +204,8 @@ def check_5_dataloader(lance_path: str, pairs_path: str, n_batches: int = 5):
     FOLD = 0
 
     # Pre-training dataset
-    pretrain_ds = MIMICLanceDataset(lance_path, pairs_path, fold=FOLD, split="val",
-                                     pair_types=("within_stay",))
+    pretrain_ds = MIMICLanceDataset(lance_path, split="val", mode="pair",
+                                     pairs_path=pairs_path, pair_types=("within_stay",))
     loader = DataLoader(pretrain_ds, batch_size=BATCH, num_workers=WORKERS, pin_memory=False,
                         multiprocessing_context="spawn")
 
@@ -230,8 +229,8 @@ def check_5_dataloader(lance_path: str, pairs_path: str, n_batches: int = 5):
        f"num_workers={WORKERS} (no deadlock)")
 
     # Eval dataset — triage
-    triage_ds = MIMICLanceEvalDataset(lance_path, fold=FOLD, split="val", mode="triage")
-    monitor_ds = MIMICLanceEvalDataset(lance_path, fold=FOLD, split="val", mode="monitoring")
+    triage_ds = MIMICLanceDataset(lance_path, split="val", mode="triage")
+    monitor_ds = MIMICLanceDataset(lance_path, split="val", mode="monitoring")
 
     # Triage length = unique patients in fold 0
     ds_full = lance.dataset(lance_path)
@@ -292,7 +291,7 @@ def benchmark(lance_path: str, pairs_path: str):
     WORKERS = 8
     FOLD = 0
 
-    ds = MIMICLanceDataset(lance_path, pairs_path, fold=FOLD, split="train")
+    ds = MIMICLanceDataset(lance_path, split="train", mode="pair", pairs_path=pairs_path)
     loader = DataLoader(ds, batch_size=BATCH, num_workers=WORKERS,
                         pin_memory=False, prefetch_factor=2,
                         multiprocessing_context="spawn")

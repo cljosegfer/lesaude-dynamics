@@ -48,6 +48,7 @@ logs/
 environment*
 requirements_frozen*
 checkpoints/*
+archive/*
 runs/*
 gorgonoid/*
 

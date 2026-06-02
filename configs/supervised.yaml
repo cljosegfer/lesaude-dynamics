@@ -1,0 +1,20 @@
+defaults:
+  - data
+  - _self_
+
+embedding_dim: 256
+batch_size: 1024
+num_workers: 4
+lr: 1.0e-5
+weight_decay: 1.0e-2
+max_epochs: 100
+seed: 42
+wandb_project: lesaude-supervised
+use_wandb: true
+ckpt_path: checkpoints/supervised_.ckpt
+
+evaluate:
+  num_workers: 4
+  n_bootstrap: 1000
+  seed: 0
+  mode: triage  # triage | monitoring
