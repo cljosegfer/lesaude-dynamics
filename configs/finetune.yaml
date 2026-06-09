@@ -1,0 +1,22 @@
+defaults:
+  - data
+  - _self_
+
+embedding_dim: 256
+batch_size: 1024
+num_workers: 4
+# Lower LR for finetuning, consistent with paper Appendix B
+lr: 1.0e-4
+weight_decay: 1.0e-2
+max_epochs: 100
+seed: 42
+
+# Path to the pretrained encoder checkpoint produced by pretrain.py
+pretrained_ckpt: checkpoints/pretrain_.ckpt
+# freeze_encoder=true  → Linear Probe (Table 1 "Linear Probe" rows)
+# freeze_encoder=false → Full Finetune (Table 1 "Finetuned" rows)
+freeze_encoder: false
+
+wandb_project: lesaude-finetune
+use_wandb: true
+ckpt_path: checkpoints/finetune_.ckpt

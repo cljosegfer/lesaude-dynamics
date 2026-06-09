@@ -225,12 +225,12 @@ class MIMICLanceDataset(Dataset):
 
         at = np.clip(yt1.astype(np.int16) - yt.astype(np.int16), -1, 1).astype(np.int8)
 
-        return (
-            torch.from_numpy(xt.copy()).float().T,
-            torch.from_numpy(xt1.copy()).float().T,
-            torch.from_numpy(yt.copy()),
-            torch.from_numpy(at.copy()),
-        )
+        return {
+            "xt":  torch.from_numpy(xt.copy()).float().T,
+            "xt1": torch.from_numpy(xt1.copy()).float().T,
+            "yt":  torch.from_numpy(yt.copy()).float(),
+            "at":  torch.from_numpy(at.copy()),
+        }
 
 
 def _fixed_list_to_ndarray(table, column: str, row: int, dtype) -> np.ndarray:
