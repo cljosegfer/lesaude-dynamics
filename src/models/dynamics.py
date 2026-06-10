@@ -145,3 +145,25 @@ class DynamicsPredictor(nn.Module):
         x = F.relu(self.input_proj(x))              # (B, hidden_dim)
         x = self.residual(x)                        # (B, hidden_dim)
         return self.output_proj(x)                  # (B, embed_dim)
+
+
+class ActionPredictor(nn.Module):
+    """Inverse dynamics: predicts pathology transition at from embedding displacement.
+
+    Input:  d = ht+1 - ht  (B, embed_dim)
+    Output: onset_logits, resolution_logits — both (B, action_dim)
+            onset:      logit for P(at_i == +1)  disease onset
+            resolution: logit for P(at_i == -1)  disease resolution
+    """
+
+    def __init__(self, embed_dim: int = 256, hidden_dim: int = 512, action_dim: int = 76):
+        super().__init__()
+        self.input_proj = nn.Linear(embed_dim, hidden_dim)
+        self.residual = _ResidualBlock(hidden_dim)
+        self.onset_head = nn.Linear(hidden_dim, action_dim)
+        self.resolution_head = nn.Linear(hidden_dim, action_dim)
+
+    def forward(self, d: torch.Tensor):
+        x = F.relu(self.input_proj(d))      # (B, hidden_dim)
+        x = self.residual(x)                # (B, hidden_dim)
+        return self.onset_head(x), self.resolution_head(x)
