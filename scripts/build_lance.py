@@ -151,21 +151,35 @@ def build_pair_index(lance_path: Path, out_path: Path):
     for subj_id, group in tqdm(
         meta.groupby("subject_id", sort=False), desc="Building pair index"
     ):
+        # Drop anomalous ECGs (ecg_no_within_stay < 0) before pairing.
+        group = group[group["ecg_no_within_stay"] >= 0].sort_values("ecg_time")
         if len(group) < 2:
             continue
 
-        group = group.sort_values("ecg_time")
-        idx = group["lance_idx"].values
+        idx  = group["lance_idx"].values
         enws = group["ecg_no_within_stay"].values
         fold_val = int(group["fold"].values[0])
-        b = len(idx) - 1
 
-        # ecg_no_within_stay increases within a stay; resets at stay boundary.
-        same_stay = enws[:-1] < enws[1:]
-        pair_types = ["within_stay" if s else "cross_stay" for s in same_stay]
+        # Within-stay: consecutive pairs where enws strictly increases.
+        within_mask = enws[:-1] < enws[1:]
+        within_t  = idx[:-1][within_mask]
+        within_t1 = idx[1:][within_mask]
 
-        idx_t_parts.append(idx[:-1])
-        idx_t1_parts.append(idx[1:])
+        # Cross-stay: first ECG (enws==0) of stay N → first ECG of stay N+1.
+        first_idx = idx[enws == 0]
+        cross_t   = first_idx[:-1]
+        cross_t1  = first_idx[1:]
+
+        pair_idx_t  = np.concatenate([within_t,  cross_t])
+        pair_idx_t1 = np.concatenate([within_t1, cross_t1])
+        b = len(pair_idx_t)
+        if b == 0:
+            continue
+
+        pair_types = ["within_stay"] * len(within_t) + ["cross_stay"] * len(cross_t)
+
+        idx_t_parts.append(pair_idx_t)
+        idx_t1_parts.append(pair_idx_t1)
         subj_parts.append([int(subj_id)] * b)
         fold_parts.append([fold_val] * b)
         type_parts.append(pair_types)
