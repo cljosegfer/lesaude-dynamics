@@ -23,12 +23,20 @@ pair_types: [cross_stay]
 
 # Upweight positive class in BCE to counter label sparsity.
 # onset ≈ 0.693/0.015 ≈ 46, resolution ≈ 0.693/0.035 ≈ 20 (derived from loss collapse values).
-onset_pos_weight: 46.0
-resolution_pos_weight: 20.0
+onset_pos_weight: 1.0
+resolution_pos_weight: 1.0
 
 wandb_project: lesaude-inverse
 use_wandb: true
 ckpt_path: checkpoints/inverse_.ckpt
+
+# Manual resume: path to a `last.ckpt` from an interrupted run's run_dir
+# (e.g. runs/runs/<date>/<time>/<run_id>/checkpoints/last.ckpt). Relative
+# paths are resolved against the original cwd. Leave null for a fresh run
+# (SLURM requeue resume is automatic and doesn't need this).
+resume_ckpt: false
+# False = full resume (optimizer/scheduler/epoch/RNG). True = load weights only.
+resume_weights_only: false
 
 evaluate:
   n_bootstrap: 1000

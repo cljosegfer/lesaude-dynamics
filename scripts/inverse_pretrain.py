@@ -17,6 +17,11 @@ Example
 -------
 HYDRA_FULL_ERROR=1 python scripts/inverse_pretrain.py ++max_epochs=1 ++batch_size=64 \\
     ++num_workers=0 ++use_wandb=false
+
+Resuming an interrupted run
+----------------------------
+python scripts/inverse_pretrain.py \\
+    ++resume_ckpt=runs/runs/20260707/232210/dc470fe3e905/checkpoints/last.ckpt
 """
 
 import sys
@@ -46,6 +51,29 @@ from utils import check_tcp
 class _MultilabelAUROC(torchmetrics.classification.MultilabelAUROC):
     def update(self, preds, target):
         super().update(preds, target.long())
+
+
+class _DirectAUROC(pl.Callback):
+    """Accumulates pre-computed probabilities across the validation epoch and
+    reports macro AUROC at epoch end — no linear probe, no optimizer."""
+
+    def __init__(self, name: str, probs_key: str, target_key: str, num_labels: int):
+        self._name       = name
+        self._probs_key  = probs_key
+        self._target_key = target_key
+        self._metric     = _MultilabelAUROC(num_labels=num_labels, average="macro")
+
+    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+        if not isinstance(outputs, dict):
+            return
+        probs  = outputs[self._probs_key].detach().float()
+        target = outputs[self._target_key].detach()
+        self._metric = self._metric.to(probs.device)
+        self._metric.update(probs, target)
+
+    def on_validation_epoch_end(self, trainer, pl_module):
+        pl_module.log(self._name, self._metric.compute(), prog_bar=True, sync_dist=True)
+        self._metric.reset()
 
 
 def _make_loader(ds: Dataset, batch_size: int, num_workers: int, shuffle: bool) -> DataLoader:
@@ -132,12 +160,23 @@ def main(cfg):
             self.log("train/loss_ratio", reg_loss / (pred_loss + 1e-8),
                      on_step=False, on_epoch=True, sync_dist=True)
 
+        # Contextualized next-state prediction (mirrors evaluate_inverse.py):
+        # P(yt+1_i=1) = yt_i*(1-res_prob_i) + (1-yt_i)*onset_prob_i
+        onset_probs = torch.sigmoid(onset_logits)
+        res_probs   = torch.sigmoid(res_logits)
+        ctx_preds   = yt * (1.0 - res_probs) + (1.0 - yt) * onset_probs  # (B, 76) in [0,1]
+        yt1         = (yt + at).clamp(0.0, 1.0)                           # (B, 76) true next labels
+
         return {
             "embedding":        ht,
             "label":            yt,
             "displacement":     d,
+            "onset_probs":      onset_probs,
             "onset_label":      onset_target,
+            "res_probs":        res_probs,
             "resolution_label": res_target,
+            "ctx_preds":        ctx_preds,
+            "yt1":              yt1,
             "loss":             loss,
         }
 
@@ -156,33 +195,9 @@ def main(cfg):
         },
     )
 
-    auroc_probe = spt.callbacks.OnlineProbe(
-        module,
-        name="auroc",
-        input="embedding",
-        target="label",
-        probe=nn.Linear(cfg.embedding_dim, 76),
-        loss=nn.BCEWithLogitsLoss(),
-        metrics=_MultilabelAUROC(num_labels=76, average="macro"),
-    )
-    onset_probe = spt.callbacks.OnlineProbe(
-        module,
-        name="onset_auroc",
-        input="displacement",
-        target="onset_label",
-        probe=nn.Linear(cfg.embedding_dim, cfg.action_dim),
-        loss=nn.BCEWithLogitsLoss(),
-        metrics=_MultilabelAUROC(num_labels=cfg.action_dim, average="macro"),
-    )
-    resolution_probe = spt.callbacks.OnlineProbe(
-        module,
-        name="resolution_auroc",
-        input="displacement",
-        target="resolution_label",
-        probe=nn.Linear(cfg.embedding_dim, cfg.action_dim),
-        loss=nn.BCEWithLogitsLoss(),
-        metrics=_MultilabelAUROC(num_labels=cfg.action_dim, average="macro"),
-    )
+    auroc_probe       = _DirectAUROC("val/ctx_auroc",        "ctx_preds",   "yt1",              76)
+    onset_probe       = _DirectAUROC("val/onset_auroc",      "onset_probs", "onset_label",      cfg.action_dim)
+    resolution_probe  = _DirectAUROC("val/resolution_auroc", "res_probs",   "resolution_label", cfg.action_dim)
 
     logger    = False
     callbacks = [auroc_probe, onset_probe, resolution_probe]
@@ -194,7 +209,7 @@ def main(cfg):
             print("WARNING: wandb unreachable (TCP check failed) — running without logger")
 
     callbacks.append(pl.pytorch.callbacks.EarlyStopping(
-        monitor="val/loss", patience=20, mode="min",
+        monitor="val/loss", patience=20, mode="min", check_finite=False,
     ))
 
     if cfg.ckpt_path:
@@ -219,11 +234,26 @@ def main(cfg):
 
     spt.set(cache_dir=cfg.spt_runs_dir)
 
+    resume_ckpt = None
+    if cfg.resume_ckpt:
+        print('Resuming from checkpoint:', cfg.resume_ckpt)
+        resume_ckpt = Path(cfg.resume_ckpt).expanduser()
+        if not resume_ckpt.is_absolute():
+            resume_ckpt = Path(get_original_cwd()) / resume_ckpt
+    else:
+        # Manager restores a wandb run id from a `wandb_resume.json` sidecar
+        # left in the CWD by the previous invocation (legacy fallback, used
+        # even when cache_dir is active). Clear it on a non-resume run so we
+        # don't silently reattach to a stale wandb run.
+        (Path(get_original_cwd()) / "wandb_resume.json").unlink(missing_ok=True)
+
     manager = spt.Manager(
         trainer=trainer,
         module=module,
         data=data_module,
         seed=cfg.seed,
+        ckpt_path=str(resume_ckpt) if resume_ckpt else None,
+        weights_only=cfg.resume_weights_only,
     )
     manager()
 
