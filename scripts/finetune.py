@@ -76,7 +76,7 @@ def main(cfg):
     # Load pretrained encoder weights
     pretrained_ckpt = Path(get_original_cwd()) / cfg.pretrained_ckpt
     if pretrained_ckpt.exists():
-        state = torch.load(pretrained_ckpt, map_location="cpu")
+        state = torch.load(pretrained_ckpt, map_location="cpu", weights_only=False)
         backbone_state = {
             k.removeprefix("backbone."): v
             for k, v in state["state_dict"].items()

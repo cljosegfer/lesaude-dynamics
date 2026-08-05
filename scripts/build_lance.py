@@ -131,7 +131,8 @@ def build_pair_index(lance_path: Path, out_path: Path):
     Within-stay:  consecutive ECGs within the same hospital stay, detected by
                   ecg_no_within_stay increasing (study_id is unique per ECG in
                   MIMIC-IV-ECG, so it cannot be used for stay boundary detection).
-    Cross-stay:   last ECG of stay N → first ECG of stay N+1 for the same patient.
+    Cross-stay:   first ECG of stay N → first ECG of stay N+1 for the same patient
+                  (i.e. consecutive triage-eligible ECGs, enws == 0 on both sides).
                   Detected when ecg_no_within_stay resets (next value ≤ current).
     """
     ds = lance.dataset(str(lance_path))

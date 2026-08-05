@@ -11,7 +11,7 @@ Architecture:
   onset_logits, res_logits = InvPredψ(d)
   L = (1-λ) * (BCE(onset, at==1) + BCE(res, at==-1)) + λ * (SIGReg(Ht) + SIGReg(Ht+1))
 
-Only cross_stay pairs are used: last ECG of stay k → first ECG of stay k+1.
+Only cross_stay pairs are used: first ECG of stay k → first ECG of stay k+1.
 
 Example
 -------

@@ -18,7 +18,7 @@ weight_decay: 1.0e-2
 max_epochs: 100
 seed: 42
 
-# cross_stay pairs only: last ECG of stay k → first ECG of stay k+1
+# cross_stay pairs only: first ECG of stay k → first ECG of stay k+1
 pair_types: [cross_stay]
 
 # Upweight positive class in BCE to counter label sparsity.
@@ -39,5 +39,7 @@ resume_ckpt: false
 resume_weights_only: false
 
 evaluate:
+  num_workers: 4
   n_bootstrap: 1000
   seed: 42
+  mode: triage  # triage | monitoring
