@@ -52,6 +52,10 @@ archive/*
 runs/*
 gorgonoid/*
 
+papel.pdf
+plan.md
+papel/
+
 # Machine-specific environment snapshot
 environment.json
 requirements_frozen.txt

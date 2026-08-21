@@ -14,7 +14,7 @@ n_points: 17
 batch_size: 1024
 num_workers: 4
 # Aggressive LR stable for the dynamics task (paper Appendix B)
-lr: 1.0e-2
+lr: 1.0e-3
 weight_decay: 1.0e-2
 max_epochs: 100
 seed: 42
@@ -22,3 +22,15 @@ seed: 42
 wandb_project: lesaude-pretrain
 use_wandb: true
 ckpt_path: checkpoints/pretrain_.ckpt
+# Best-by-downstream-AUROC checkpoint, saved alongside the best-by-val/loss one
+# above. Same weights-only ModelCheckpoint mechanism, monitoring
+# eval/auroc__MultilabelAUROC_epoch (mode=max) instead.
+ckpt_path_auroc: checkpoints/pretrain_auroc_.ckpt
+
+# Manual resume: path to a `last.ckpt` from an interrupted run's run_dir
+# (e.g. runs/runs/<date>/<time>/<run_id>/checkpoints/last.ckpt). Relative
+# paths are resolved against the original cwd. Leave null for a fresh run
+# (SLURM requeue resume is automatic and doesn't need this).
+resume_ckpt: false
+# False = full resume (optimizer/scheduler/epoch/RNG). True = load weights only.
+resume_weights_only: false

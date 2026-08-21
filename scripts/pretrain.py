@@ -18,6 +18,11 @@ Example
 -------
 HYDRA_FULL_ERROR=1 python scripts/pretrain.py ++max_epochs=1 ++batch_size=64 \\
     ++num_workers=0 ++use_wandb=false
+
+Resuming an interrupted run
+----------------------------
+python scripts/pretrain.py \\
+    ++resume_ckpt=runs/runs/20260707/232210/dc470fe3e905/checkpoints/last.ckpt
 """
 
 import sys
@@ -159,8 +164,13 @@ def main(cfg):
         else:
             print("WARNING: wandb unreachable (TCP check failed) — running without logger")
 
+    # Unlike standard SSL, the dynamics objective already conditions on the
+    # transition vector at = yt+1 - yt (label-derived), so it isn't label-blind
+    # the way an encoder-only SSL loss would be. We stop on the downstream
+    # signal we actually care about — the online linear probe's AUROC — rather
+    # than the SSL pred/SIGReg loss, which is only a proxy for it.
     callbacks.append(pl.pytorch.callbacks.EarlyStopping(
-        monitor="val/loss", patience=20, mode="min",
+        monitor="eval/auroc__MultilabelAUROC_epoch", patience=20, mode="max", check_finite=False,
     ))
 
     if cfg.ckpt_path:
@@ -170,6 +180,16 @@ def main(cfg):
             dirpath=str(ckpt.parent),
             filename=ckpt.stem,
             mode="min",
+            save_weights_only=True,
+        ))
+
+    if cfg.ckpt_path_auroc:
+        ckpt_auroc = Path(get_original_cwd()) / cfg.ckpt_path_auroc
+        callbacks.append(pl.pytorch.callbacks.ModelCheckpoint(
+            monitor="eval/auroc__MultilabelAUROC_epoch",
+            dirpath=str(ckpt_auroc.parent),
+            filename=ckpt_auroc.stem,
+            mode="max",
             save_weights_only=True,
         ))
 
@@ -184,11 +204,26 @@ def main(cfg):
 
     spt.set(cache_dir=cfg.spt_runs_dir)
 
+    resume_ckpt = None
+    if cfg.resume_ckpt:
+        print('Resuming from checkpoint:', cfg.resume_ckpt)
+        resume_ckpt = Path(cfg.resume_ckpt).expanduser()
+        if not resume_ckpt.is_absolute():
+            resume_ckpt = Path(get_original_cwd()) / resume_ckpt
+    else:
+        # Manager restores a wandb run id from a `wandb_resume.json` sidecar
+        # left in the CWD by the previous invocation (legacy fallback, used
+        # even when cache_dir is active). Clear it on a non-resume run so we
+        # don't silently reattach to a stale wandb run.
+        (Path(get_original_cwd()) / "wandb_resume.json").unlink(missing_ok=True)
+
     manager = spt.Manager(
         trainer=trainer,
         module=module,
         data=data_module,
         seed=cfg.seed,
+        ckpt_path=str(resume_ckpt) if resume_ckpt else None,
+        weights_only=cfg.resume_weights_only,
     )
     manager()
 
