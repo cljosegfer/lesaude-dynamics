@@ -1,0 +1,95 @@
+snomed_code,name,mimic_icd10,confidence,notes
+10370003,pacing rhythm,,none,Chapter XXI (Z95.0 presence of pacemaker) not Chapter IX
+106068003,atrial rhythm (ectopic),I49,low,catch-all other-arrhythmia bucket
+111288001,ventricular flutter,I49,high,I49.02
+11157007,ventricular bigeminy,I49,high,I49.3 pattern
+111975006,prolonged QT interval,,none,interval measurement finding not disease (R94.31); LQTS itself would be I45.81 but this label is the generic finding
+13640000,fusion beats,I49,medium,ventricular ectopic pattern
+164865005,myocardial infarction,I21,medium,generic MI could be acute(I21) or old(I25); CSN's regional-wall labels read as acute ECG patterns
+164873001,left ventricular hypertrophy,I51,low,voltage-criteria ECG finding; I51.7 cardiomegaly is the conventional but weak crosswalk bucket
+164889003,atrial fibrillation,I48,high,
+164890007,atrial flutter,I48,high,
+164896001,ventricular fibrillation,I49,high,I49.01
+164909002,left bundle branch block,I44,high,I44.7
+164912004,P wave change,,none,ECG descriptor
+164917005,Q wave abnormal,,none,ECG descriptor
+164930006,ST interval abnormal,,none,ECG descriptor
+164931005,ST elevation,,none,ECG descriptor
+164934002,T wave abnormal,,none,ECG descriptor
+164937009,U wave abnormal,,none,ECG descriptor
+164942001,fQRS wave,,none,ECG descriptor
+164947007,prolonged PR interval,,none,interval measurement finding, not an AV block diagnosis
+17338001,ventricular premature beats,I49,high,I49.3
+17366009,sinus-to-atrial wandering rhythm,I49,low,catch-all other-arrhythmia bucket
+195042002,2nd degree AV block,I44,high,I44.1
+195060002,ventricular pre-excitation,I45,high,I45.6
+195101003,wandering atrial pacemaker,I49,low,catch-all other-arrhythmia bucket
+233892002,accelerated atrial escape rhythm,I49,low,catch-all other-arrhythmia bucket
+233897008,AV reentrant tachycardia,I47,high,I47.1
+233917008,AV block (unspecified),I44,high,
+251120003,incomplete left bundle branch block,I44,high,I44.6/I44.7 family
+251146004,low QRS voltage,,none,ECG descriptor
+251164006,junctional premature complex,I49,high,I49.2
+251166008,AV nodal reentrant tachycardia,I47,high,I47.1
+251170000,blocked premature atrial contraction,I49,medium,I49.1 family
+251173003,atrial bigeminy,I49,high,I49.1 pattern
+251180001,ventricular trigeminy,I49,high,I49.3 pattern
+251187003,atrial escape beat,I49,medium,bradyarrhythmia-adjacent escape beat
+251198002,clockwise rotation,,none,ECG descriptor (transition zone)
+251199005,counterclockwise rotation,,none,ECG descriptor (transition zone)
+251205003,prolonged P wave,,none,ECG descriptor
+251223006,tall P wave,,none,ECG descriptor
+270492004,1st degree AV block,I44,high,I44.0
+27885002,complete heart block,I44,high,I44.2
+284470004,premature atrial contraction,I49,high,I49.1
+29320008,atrioventricular junctional rhythm,I49,medium,catch-all other-arrhythmia bucket
+365413008,poor R wave progression,,none,ECG descriptor
+39732003,left axis deviation,,none,ECG descriptor
+418818005,Brugada pattern,I49,low,sometimes coded I42.8 (cardiomyopathy) instead; genuinely ambiguous
+425856008,paroxysmal ventricular tachycardia,I47,medium,I47.2 usually, grouped with paroxysmal tachycardia family
+426177001,sinus bradycardia,,none,R00.1 (Chapter XVIII symptom code), not Chapter IX
+426183003,Mobitz type II AV block,I44,high,I44.1 family
+426627000,bradycardia (unspecified),,none,R00.1
+426648003,junctional tachycardia,I47,medium,grouped with paroxysmal SVT family
+426664006,accelerated junctional rhythm,I49,low,catch-all other-arrhythmia bucket
+426761007,supraventricular tachycardia,I47,high,I47.1
+426783006,sinus rhythm (normal),,none,normal finding, not a disease
+426995002,junctional escape beat,I49,medium,bradyarrhythmia-adjacent escape beat
+427084000,sinus tachycardia,,none,R00.0
+427172004,premature ventricular contractions,I49,high,I49.3
+427393009,sinus arrhythmia,,none,benign normal variant, R00.8 if coded at all
+428417006,early repolarization,,none,ECG descriptor / normal variant
+428750005,nonspecific ST-T abnormality,,none,ECG descriptor
+429622005,ST depression,,none,ECG descriptor
+445118002,left anterior fascicular block,I44,high,I44.4
+445211001,left posterior fascicular block,I44,high,I44.5
+446358003,right atrial hypertrophy,I51,low,voltage-criteria ECG finding
+446813000,left atrial hypertrophy,I51,low,voltage-criteria ECG finding
+47665007,right axis deviation,,none,ECG descriptor
+49578007,shortened PR interval,,none,interval measurement finding
+50799005,atrioventricular dissociation,I49,medium,catch-all other-arrhythmia bucket
+54016002,Mobitz type I (Wenckebach) AV block,I44,high,I44.1 family
+54329005,anterior myocardial infarction,I21,medium,regional acute-MI ECG pattern
+55827005,left ventricular high voltage,I51,low,voltage-criteria ECG finding
+55930002,S-T changes,,none,ECG descriptor
+5609005,sinus arrest,I49,medium,sick-sinus-adjacent
+57054005,acute myocardial infarction,I21,high,
+59118001,right bundle branch block,I45,high,I45.10
+59931005,T wave inversion,,none,ECG descriptor
+61277005,accelerated idioventricular rhythm,I49,medium,ventricular ectopic rhythm
+61721007,clockwise/counterclockwise vectorcardiographic loop,,none,ECG descriptor
+63593006,supraventricular premature beats,I49,high,I49.1/I49.2 grouped
+6374002,bundle branch block (unspecified),I45,medium,I45.4/I45.9 family
+65778007,sinoatrial block,I45,high,I45.5
+67741000119109,left atrial enlargement,I51,low,voltage-criteria ECG finding
+67751000119106,right atrial high voltage,I51,low,voltage-criteria ECG finding
+698252002,nonspecific intraventricular conduction disorder,I45,high,I45.4
+713422000,atrial tachycardia,I47,high,I47.1
+713426002,incomplete right bundle branch block,I45,high,I45.0
+713427006,complete right bundle branch block,I45,high,I45.10 family
+733534002,complete left bundle branch block,I44,high,I44.7 (scored equivalent to 164909002 in PhysioNet Challenge 2021)
+74390002,Wolff-Parkinson-White pattern,I45,high,I45.6
+75532003,ventricular escape beat,I49,medium,bradyarrhythmia-adjacent escape beat
+77867006,decreased/short QT interval,,none,no standard billable ICD-10-CM code
+81898007,ventricular escape rhythm,I49,medium,bradyarrhythmia-adjacent escape rhythm
+89792004,right ventricular hypertrophy,I51,low,voltage-criteria ECG finding

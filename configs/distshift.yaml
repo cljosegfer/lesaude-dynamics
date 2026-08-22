@@ -1,0 +1,28 @@
+# Distribution Shift evaluation (papel/experiments.tex): a MIMIC-trained
+# classifier (76-dim sigmoid output, no further finetuning) is applied to
+# CSN waveforms and scored only on the ICD-10 clusters that have a CSN
+# counterpart via src/dataset/snomed_to_icd10_csn.csv.
+#
+# Deliberately standalone rather than composing configs/data.yaml +
+# configs/data_csn.yaml — both define a `vocabulary_path` key for their own
+# (different) label space, so composing them would collide.
+
+embedding_dim: 256
+batch_size: 1024
+
+mimic_vocabulary_path: '/snfs2/josefernandes/datasets/lesaude/mimic-iv-ecg-monolith/icd_vocabulary_76.json'
+csn_lance_path: '/snfs2/josefernandes/datasets/lesaude/csn-monolith/chapman_shaoxing_ningbo.lance'
+csn_vocabulary_path: '/snfs2/josefernandes/datasets/lesaude/csn-monolith/dx_vocabulary_csn.json'
+
+# high | medium | low — see src/dataset/icd10_crosswalk.py for what each tier means.
+min_confidence: medium
+
+evaluate:
+  # A MIMIC-trained/finetuned checkpoint (76-dim head) — NOT a CSN-finetuned
+  # one, the whole point is testing transfer without further adaptation.
+  # Override to compare model types, e.g.:
+  #   ++evaluate.ckpt_path=archive/supervised_0.ckpt
+  ckpt_path: archive/supervised_0.ckpt
+  num_workers: 4
+  n_bootstrap: 1000
+  seed: 42
