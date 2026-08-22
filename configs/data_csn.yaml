@@ -1,0 +1,9 @@
+data_dir: '/snfs2/josefernandes/datasets/lesaude/csn-monolith'
+train_frac: 1.0
+cache: false
+
+# Lance dataset path (populated by scripts/build_lance_csn.py)
+lance_path: '/snfs2/josefernandes/datasets/lesaude/csn-monolith/chapman_shaoxing_ningbo.lance'
+vocabulary_path: '/snfs2/josefernandes/datasets/lesaude/csn-monolith/dx_vocabulary_csn.json'
+
+spt_runs_dir: 'runs'
