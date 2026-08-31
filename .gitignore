@@ -54,7 +54,7 @@ gorgonoid/*
 
 papel.pdf
 plan.md
-papel/
+papel/fig/*
 
 # Machine-specific environment snapshot
 environment.json

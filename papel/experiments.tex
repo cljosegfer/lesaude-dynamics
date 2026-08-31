@@ -1,0 +1,100 @@
+\section{Experiments and Discussion}
+
+We evaluate our approach on the MIMIC-IV-ECG dataset~\citep{gow2023mimic} from PhysioNet~\citep{goldberger2000physiobank}, using the official patient-stratified folds~\citep{strodthoff2024mimic} throughout to guarantee zero identity leakage between splits. Across the five studies below we compare four models sharing the same encoder $\text{Enc}_\theta$ and, where applicable, the same downstream protocols introduced in Section~\ref{sec:dynamics} and Section~\ref{sec:inverse}: a fully supervised classifier trained end-to-end from scratch; a naive patient-invariance SSL baseline, obtained by mapping $\vh_t \rightarrow \vh_{t+1}$ without action conditioning (i.e. treating longitudinal exams as positive pairs for standard invariance learning); our forward Dynamics model; and our Inverse Dynamics model. Results are partial and will be filled in as the corresponding runs complete: some tables below already report point estimates and bootstrap 95\% confidence intervals for the methods that have finished, with pending entries marked explicitly.
+
+\subsection{Datasets}
+
+MIMIC-IV-ECG is the longitudinal dataset used to pretrain both world-model components, the Dynamics model and the Inverse Dynamics model, as well as the naive SSL and fully supervised baselines; the Contextualized Inference study (Section~\ref{sec:contextualized}) is trained and evaluated on MIMIC-IV-ECG alone. We additionally use smaller, publicly available 12-lead ECG datasets, e.g. CSN (Chapman--Shaoxing--Ningbo), %TODO: confirm CSN and list any further datasets to include here
+in two different ways: the Classification study (Section~\ref{sec:classification}) finetunes each MIMIC-pretrained encoder on such a dataset's own native label space, while the Distribution Shift study (Section~\ref{sec:distshift}) instead matches its diagnostic labels to the 76-cluster cardiac action space defined on MIMIC-IV-ECG by ICD-10 code, restricting evaluation to the intersection of labels that exist in both label sets and discarding codes with no counterpart, without any further finetuning.
+
+\subsection{Contextualized Inference}
+\label{sec:contextualized}
+
+This task asks a model to predict the current diagnosis $\vy_t$ given the current ECG $\mX_t$, the immediately preceding ECG $\mX_{t-1}$, and the previously known diagnosis $\vy_{t-1}$, i.e. it evaluates diagnosis in the same longitudinal setting the world model is trained on, rather than from a single exam in isolation. Both world-model components produce a prediction for this task without any additional supervised training: the Dynamics model uses CEM Planning (Section~\ref{sec:dynamics}) to recover the transition $\va^\star$ that best explains $\vh_t=\text{Enc}_\theta(\mX_t)$ from $\vh_{t-1}=\text{Enc}_\theta(\mX_{t-1})$, giving $\hat{\vy}_t = \text{clip}(\vy_{t-1}+\va^\star,0,1)$; the Inverse Dynamics model is more direct, requiring only a forward pass of $\text{Inv}_\psi(\vh_t-\vh_{t-1})$ and the contextualized onset/resolution combination already described in Section~\ref{sec:inverse}.
+
+% We compare both against three baselines that are each given strictly less information than $(\mX_{t-1},\mX_t,\vy_{t-1})$, isolating which source of information actually drives predictive power:
+% \begin{itemize}
+% \item \textbf{Carry-forward}: predicts $\hat{\vy}_t=\vy_{t-1}$ directly, with no learning and no access to either ECG; it assumes clinical stability between consecutive records.
+% \item \textbf{Y-known}: also has access only to $\vy_{t-1}$ (no ECG at all), but unlike carry-forward it is a learned mapping fit on the training set's empirical label-transition statistics. This isolates how much of any observed gain is simply population-level regression to the mean rather than patient-specific signal.
+% \item \textbf{X-known}: has access only to the earlier ECG $\mX_{t-1}$ (not $\vy_{t-1}$, and critically not the current exam $\mX_t$), through the same encoder used elsewhere. This measures the ceiling achievable from ECG morphology alone when the actually relevant, current recording is unavailable, isolating the value of observing $\mX_t$ itself.
+% \end{itemize}
+% Together, these ablations let us attribute the world model's performance on this task to reading the new ECG, knowing the prior diagnosis, or the combination of both through the learned dynamics. Table~\ref{tab:contextualized} reports macro-AUROC for this task on MIMIC-IV-ECG; 95\% confidence intervals from bootstrap resampling are shown in brackets where available.
+
+\begin{table}[t]
+\caption{Contextualized Inference macro-AUROC on MIMIC-IV-ECG (Section~\ref{sec:contextualized}): predicting $\vy_t$ from $\mX_{t-1}, \mX_t, \vy_{t-1}$. Supervised has no mechanism to consume $\vy_{t-1}$ or $\mX_{t-1}$ and cannot be evaluated on this task. 95\% CIs are from bootstrap resampling; the Dynamics CI is pending.}
+\label{tab:contextualized}
+\centering
+\begin{tabular}{@{}l c@{}}
+\toprule
+\textbf{Method} & \textbf{Macro-AUROC} \\
+\midrule
+Dynamics (CEM Planning)   & 0.740 \small{[pending]} \\
+Inverse Dynamics          & 0.8326 \small{[0.8181 -- 0.8456]} \\
+\addlinespace
+Y-known baseline                   & \emph{pending} \\
+X-known baseline                   & \emph{pending} \\
+Carry-forward             & 0.7553 \small{[0.7435 -- 0.7649]} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Classification}
+\label{sec:classification}
+
+This is the static multi-label classification task, evaluated on a single ECG exam at a time with no longitudinal context. On MIMIC-IV-ECG we follow the Triage protocol established by \cite{strodthoff2024mimic}, which restricts evaluation to the first ECG of each patient's stay. We broaden this study beyond MIMIC by also finetuning on other diagnostic ECG datasets, e.g. CSN (Chapman--Shaoxing--Ningbo), %TODO: confirm CSN and list any further datasets to include here
+each under its own native label space rather than the MIMIC-derived 76-cluster cardiac action space. 
+% This is distinct from the Distribution Shift study (Section~\ref{sec:distshift}): there, labels are matched across datasets and no further training occurs; here, each pretrained encoder is finetuned on the target dataset's own labels, testing whether MIMIC pretraining is a broadly useful initialization even for classification schemes unrelated to the pathology-transition space it was pretrained on. 
+% We compare the Dynamics-pretrained encoder, the Inverse-Dynamics-pretrained encoder, and the naive SSL baseline, each under both the Linear Probing and Finetuning protocols of Section~\ref{sec:dynamics}, against a fully supervised encoder trained from scratch directly on each respective dataset (i.e. without MIMIC pretraining), which serves as a dataset-native performance reference rather than a transferred one. Table~\ref{tab:classification} reports Finetuned macro-AUROC; Linear Probing results are pending.
+
+\begin{table}[t]
+\caption{Finetuned macro-AUROC classification performance across datasets (Section~\ref{sec:classification}), each finetuned on that dataset's own label space. CSN = Chapman--Shaoxing--Ningbo. 95\% CIs are from bootstrap resampling; entries are pending where not yet available.}
+\label{tab:classification}
+\centering
+\begin{tabular}{@{}l cc@{}}
+\toprule
+ & \multicolumn{2}{c}{\textbf{Macro-AUROC (Finetuned)}} \\
+\cmidrule(l){2-3}
+\textbf{Method} & \textbf{MIMIC} & \textbf{CSN} \\
+\midrule
+
+Dynamics                  & 0.740 \small{[pending]} & \emph{pending} \\
+Inverse Dynamics          & 0.7373 \small{[0.7252 -- 0.7510]} & 0.8958 \small{[0.8806 -- 0.9117]} \\
+\addlinespace
+Supervised & 0.7260 \small{[0.7140 -- 0.7386]} & 0.9215 \small{[0.9115 -- 0.9327]} \\
+SSL baseline    & \emph{pending} & \emph{pending} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Distribution Shift}
+\label{sec:distshift}
+
+Here we test generalization beyond MIMIC-IV-ECG itself. We match ICD-10 codes from MIMIC to the labels available in the smaller external datasets described in Section~\ref{sec:classification}, restricting evaluation to the codes common to both label sets and ignoring the rest. Because this code-matching can be more or less permissive, we report results at three matching thresholds, Low, Medium, and High, %TODO: define precisely what the Low/Medium/High matching threshold controls
+which trade off how many labels survive the intersection against how exact the semantic correspondence between a MIMIC cluster and its external counterpart is. Onto this shifted label distribution we transfer, without any further finetuning, the MIMIC-finetuned Dynamics model, the MIMIC-finetuned Inverse Dynamics model, the MIMIC-finetuned naive SSL baseline, and the MIMIC-trained supervised classifier. This tests whether the structure imposed by the action-conditioned latent space transfers more robustly across acquisition sites and populations than a standard supervised classifier, complementing the low-data results of the original study with a distribution-shift, rather than sample-size, stress test. Table~\ref{tab:distshift} reports zero-shot macro-AUROC on CSN under all three thresholds.
+
+\begin{table}[t]
+\caption{Zero-shot Distribution Shift macro-AUROC on CSN (Chapman--Shaoxing--Ningbo), Section~\ref{sec:distshift}. All methods are pretrained/finetuned on MIMIC-IV-ECG only and transferred without further training, under three ICD-10 label-matching thresholds. 95\% CIs are from bootstrap resampling; entries are pending where not yet available.}
+\label{tab:distshift}
+\centering
+\begin{tabular}{@{}l ccc@{}}
+\toprule
+ & \multicolumn{3}{c}{\textbf{Macro-AUROC (CSN)}} \\
+\cmidrule(l){2-4}
+\textbf{Method} & \textbf{Medium} & \textbf{Low} & \textbf{High} \\
+\midrule
+Dynamics                  & \emph{pending} & \emph{pending} & \emph{pending} \\
+Inverse Dynamics          & 0.8591 \small{[0.8346 -- 0.8794]} & 0.8203 \small{[0.7989 -- 0.8380]} & 0.8498 \small{[0.8333 -- 0.8650]} \\
+\addlinespace
+Supervised                & 0.8220 \small{[0.7894 -- 0.8493]} & 0.7822 \small{[0.7537 -- 0.8060]} & 0.8194 \small{[0.8016 -- 0.8367]} \\
+SSL baseline              & \emph{pending} & \emph{pending} & \emph{pending} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Patient Identification}
+
+To directly probe the disentanglement claim underlying our formulation, that $\text{Enc}_\theta$ separates a stable Patient Identity component from the Disease State altered by $\va_t$, we evaluate whether the learned representations $\vh_t$ still support identifying which patient produced a given ECG. We take the frozen representations from the Dynamics and naive SSL encoders and evaluate them on a patient-identification task: a subset of the MIMIC-IV-ECG training split is restricted to patients with multiple recorded ECGs, and we test whether $\vh_t$ is discriminative enough to recover a patient's identity within this subset. This is complementary to the diagnosis-focused Classification and Contextualized Inference studies, which probe the Disease State component, by directly probing what remains of the Patient Identity component after action-conditioned pretraining.
+
+\subsection{Label Sparsity}
+
+We repeat the Triage protocol of Section~\ref{sec:triage}, but on a substantially larger and sparser label space, obtained by (1) removing the two-digit ICD-10 truncation used to build the 76-cluster cardiac action space elsewhere in the paper, keeping the finer-grained, untruncated codes as separate labels, and (2) including non-cardiac ICD-10 codes rather than restricting to Chapter IX (Diseases of the Circulatory System). Both changes substantially increase the number of distinct labels and reduce the number of positive examples available per label. This tests whether the dynamics objective's sample-efficiency advantage over static classification persists, or becomes more pronounced, as the label space grows larger and sparser, and whether the SIGReg-organized latent geometry continues to support linear separability under this harder, higher-cardinality labeling regime.

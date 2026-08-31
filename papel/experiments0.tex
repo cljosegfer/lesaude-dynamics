@@ -1,0 +1,81 @@
+\section{Experiments and Discussion}
+
+We evaluate our approach on the MIMIC-IV-ECG dataset~\citep{gow2023mimic} from PhysioNet~\citep{goldberger2000physiobank}, containing $\sim$800k records from $\sim$160k patients. We utilize the official patient-stratified folds~\citep{strodthoff2024mimic} to ensure zero identity leakage between splits\footnote{See Appendix~\ref{sec:dataset} for a complete dataset characterization.}. We compare our LeJEPA-based approach against a fully supervised model trained from scratch and a Naive Patient-Based SSL baseline. We implement the latter by mapping $\mathbf{h}_t \to \mathbf{h}_{t+1}$ without action conditioning, effectively treating longitudinal exams as positive pairs for standard invariance learning.
+
+\paragraph{Generalization and Robustness.} We first evaluate performance on the full dataset under two distinct clinical scenarios: Triage, evaluating only on the first ECG of a patient's visit; Monitoring, which evaluates on all ECGs but captures the temporal redundancy inherent in multi-record hospital stays. Results are detailed in Table~\ref{tab:results}.
+
+\begin{table*}[t]
+\caption{Macro-AUROC Performance on MIMIC-IV-ECG. We compare our Action-Conditioned Dynamics model against a supervised baseline and a naive patient-invariance SSL baseline. We report results on the Triage task and the Monitoring task. 95\% confidence intervals from 1,000 bootstrap iterations are shown in brackets.}
+\label{tab:results}
+\centering
+\resizebox{\textwidth}{!}{
+\begin{tabular}{@{}l l cc c cc@{}}
+\toprule
+\multicolumn{2}{c}{\textbf{Data Usage}} & \multicolumn{2}{c}{\textbf{}} & \multicolumn{2}{c}{\textbf{Macro-AUROC}} \\
+\cmidrule(r){1-2} \cmidrule(lr){3-4} \cmidrule(l){5-6}
+\textbf{Labels} ($\vy$) & \textbf{Patient ID} & \textbf{Method} & \textbf{Eval. Protocol} & \textbf{Triage (First ECG)} & \textbf{Monitoring (All)} \\
+\midrule
+
+% Supervised Baseline
+\greencheck & \redx & Supervised & End-to-End & 0.735 \small{[0.727 -- 0.751]} & 0.786 \small{[0.776 -- 0.797]} \\
+
+\addlinespace
+
+% Naive SSL (Ablation)
+\redx & \greencheck & Naive SSL (Invariance) & Linear Probe & 0.666 \small{[0.656 -- 0.682]} & 0.698 \small{[0.689 -- 0.709]} \\
+ & & & Finetuned & 0.679 \small{[0.668 -- 0.697]} & 0.726 \small{[0.715 -- 0.737]} \\
+
+\addlinespace
+
+\greencheck & \greencheck & Ours (Latent Dynamics) & Linear Probe & 0.725 \small{[0.714 -- 0.742]} & 0.744 \small{[0.734 -- 0.755]} \\
+ & & & Finetuned & 0.742 \small{[0.733 -- 0.756]} & 0.786 \small{[0.777 -- 0.794]} \\
+
+\bottomrule
+\end{tabular}
+}
+\end{table*}
+
+While both methods achieve parity on the easier Monitoring task, our Dynamics model slightly outperforms the Supervised baseline on the critical Triage task. We hypothesize that the dynamics learning—which requires predicting the transformation of the signal—forces the encoder to disentangle anatomical features from pathological changes, resulting in robust representations. The Naive SSL baseline did not yield good downstream performance for this task, confirming that patient invariance alone is insufficient for diagnosis.
+
+\paragraph{Data Efficiency.} To test the hypothesis that dynamics modeling provides a denser supervision signal than classification, we simulate low-resource environments by restricting the training data to 10\% ($\sim$4k patients) and 1\% ($\sim$400 patients) of the dataset. Crucially, unlike standard SSL, we also pretrain with this restriction as our approach requires the label.
+
+As illustrated in Figure~\ref{fig:lowdata}, the Supervised model suffers catastrophic degradation in the 10\% regime ($0.74 \rightarrow 0.64$ AUROC), owing to the high parameter-to-sample ratio. Conversely, our Dynamics model maintains robustness ($0.74 \rightarrow 0.69$ AUROC), significantly outperforming the baseline ($p < 0.05$). This suggests that predicting a high-dimensional future latent state $\vh_{t+1}$, given the action, provides a richer gradient signal than categorical labels, enabling complex feature learning even when data is scarce. At 1\% data, we observe a capability collapse where both models degrade to random guessing ($\sim$0.50 AUROC). This establishes a lower bound for the xResNet1d50 architecture on this modality, indicating that below this threshold, model capacity exceeds the information content of the subset regardless of the objective.
+
+\begin{figure}[ht]
+\begin{center}
+%\framebox[4.0in]{$\;$}
+%\fbox{\rule[-.5cm]{0cm}{4cm} \rule[-.5cm]{4cm}{0cm}}
+\centerline{\includegraphics[width=\columnwidth]{papel/fig/lowdata.png}}
+\end{center}
+\caption{Macro-AUROC vs. Data Fraction. Results are shown for Triage (First ECG) and Monitoring (All ECGs) tasks. The Latent Dynamics model demonstrates significantly higher sample efficiency in the 10\% regime ($p < 0.05$, non-overlapping intervals) compared to the fully supervised baseline.}
+\label{fig:lowdata}
+\end{figure}
+
+\paragraph{Failure-mode.}
+% This is further supported by our linear probe evaluation on the same pretrained model at 1\% regime. While full-parameter finetuning collapses to random guessing, a linear probe on frozen representations retains a signal of 0.56 AUROC, results are detailed in Table~\ref{tab:results001}. This suggests that the Action-Conditioned World Model successfully captures cardiac dynamics even at this extreme scale, but the standard supervised finetuning objective is sufficiently noisy to overwrite these learned features. 
+To investigate this performance degradation at the 1\% data regime, we conduct a post-mortem analysis comparing full-parameter finetuning against linear probing on frozen representations. Results are detailed in Table~\ref{tab:results001}. We observe a striking divergence: while full-parameter finetuning collapses to random guessing, the linear probe maintains a significantly higher signal. 
+
+This suggests that the pretraining successfully captures cardiac dynamics and organizes a meaningful latent space even at this extreme low-data scale. However, the standard supervised finetuning objective appears to introduce sufficient gradient noise to overwrite these learned features when labels are sparse. This finding confirms that the collapse is not a failure of the world model's representation learning, but rather a failure of the task-specific adaptation protocol, highlighting the need for more robust distillation methods.
+
+\begin{table*}[t]
+\caption{Low-Data Regime Analysis (1\% Data). We compare the Supervised baseline against our World Model using two evaluation protocols. The gap between Linear Probe and Finetuned results indicates that the world model retains clinical features that are destroyed during full-parameter finetuning.}
+\label{tab:results001}
+\centering
+\begin{tabular}{@{}l l c cc@{}}
+\toprule
+\multicolumn{2}{c}{\textbf{}} & \multicolumn{2}{c}{\textbf{Macro-AUROC}} \\
+\cmidrule(lr){1-2} \cmidrule(l){3-4}
+\textbf{Method} & \textbf{Eval. Protocol} & \textbf{Triage (First ECG)} & \textbf{Monitoring (All)} \\
+\midrule
+
+% Supervised Baseline
+Supervised & End-to-End & 0.515 \small{[0.500 -- 0.526]} & 0.503 \small{[0.491 -- 0.514]} \\
+
+\addlinespace
+
+Ours (Latent Dynamics) & Linear Probe & 0.563 \small{[0.551 -- 0.575]} & 0.575 \small{[0.560 -- 0.591]} \\
+& Finetuned & 0.510 \small{[0.498 -- 0.525]} & 0.507 \small{[0.497 -- 0.519]} \\
+
+\bottomrule
+\end{tabular}
+\end{table*}

@@ -1,0 +1,59 @@
+\section{Method}
+We formalize the cardiac monitoring problem as learning a world model that simulates the evolution of the heart’s electrophysiological state under pathological perturbations. Unlike standard SSL which enforces invariance to augmentation, our objective is to learn a predictive latent space where disease onset acts as a translational force on the patient’s anatomical representation, leveraging patient identity information. The architecture is schematized as in Figure~\ref{fig:architecture}.
+
+\begin{figure}[ht]
+\begin{center}
+%\framebox[4.0in]{$\;$}
+%\fbox{\rule[-.5cm]{0cm}{4cm} \rule[-.5cm]{4cm}{0cm}}
+\centerline{\includegraphics[width=\columnwidth]{papel/fig/architecture_1_.png}}
+\end{center}
+\caption{Proposed Action-Conditioned World Model Architecture. The framework consists of two stages. Top (Pre-training): the encoder $\text{Enc}_\theta$ maps longitudinal ECG pairs ($\mX_t, \mX_{t+1}$) to latent representations ($\vh_t, \vh_{t+1}$). A dynamics network $\text{Dyn}_\phi$ predicts the future latent state $\hat{\vh}_{t+1}$ conditioned on the current state $\vh_t$ and the pathology transition vector $\va_t = \vy_{t+1}-\vy_t$, processed by projector $\text{Proj}_\omega$. Bottom (Fine-tuning): the learned representation $\vh_t$ is passed to a classifier $\text{Cls}_\psi$ to predict multi-label diagnoses $\hat{\vy}_t$.}
+\label{fig:architecture}
+\end{figure}
+
+\paragraph{Problem Formulation.}
+Let $\sX$ be the space of 12-lead ECG signals $\mX \in \R^{12 \times T}$ and $\sY$ be the associated set of diagnosis labels $\vy \in \{0,1\}^C$. In longitudinal datasets (e.g., MIMIC-IV), we observe a sequence of states $({\mX}_t, {\vy}_t)$ for a specific patient.
+
+We define the action $\va_t$ not as the static label, but as the transition vector describing the pathological change between time steps:
+$$ \va_t = \vy_{t+1} - \vy_t \in \{-1, 0, 1\}^C $$
+Here, $\va_{t,i}=1$ denotes disease onset, $-1$ denotes resolution, and $0$ implies stability. The goal of the World Model is to learn an encoder $\text{Enc}_\theta: \sX \rightarrow \sH$ and a predictor $\text{Dyn}_\phi$ such that the future latent state can be estimated from the current state and the applied clinical \emph{action}, after a projection via $\text{Proj}_\omega$:
+$ \hat{\vh}_{t+1} = \text{Dyn}_\phi(\text{Enc}_\theta(\mX_t), \text{Proj}_\omega(\va_t)) $.
+This formulation forces the encoder $\text{Enc}_\theta$ to disentangle Patient Identity (invariant features required to ground the prediction) from Disease State (dynamic features modified by $\va_t$).
+
+\paragraph{Dynamics Visualization.}
+To illustrate the transition vector's role in grounding the latent space, we visualize specific longitudinal ECG pairs ($\mX_t,\mX_{t+1}$). In Figure~\ref{fig:transition0}, the action $\va_t$ is active only for label I44, which is morphologically represented by the wide QRS complex (black arrow). In Figure~\ref{fig:transition1}, while $\va_t$ remains still active for I44, both signals share a common stable label in $\vy$ (I48), consequently, this component is transparent in the action vector $\va_{t,\text{I48}}=\vy_{t+1,\text{I48}}-\vy_{t,\text{I48}}=0$, distinct from the flutter waves (red arrow) visible in the traces. Critically, these examples illustrate the disentanglement objective, the model is trained to linearize disease progression, isolating the transition vector as an independent force acting upon a stable, patient-specific substrate.
+
+
+
+\begin{figure}[htb]
+\begin{center}
+\centerline{\includegraphics[width=\columnwidth]{papel/fig/transition0.png}}
+\end{center}
+\caption{
+Visualization of a Pure Pathological Transition. This longitudinal pair illustrates a transition where the action vector $\va_t$ is sparse, representing the onset of a single pathology (I44). The baseline signal (top) shows a normal ventricular activation, while the subsequent recording (bottom) exhibits the classic morphological hallmark of I44, a widened QRS complex (black arrow). By conditioning on this transition vector, the world model is trained to simulate the transformation from a healthy baseline to this pathological state within the latent manifold.}
+\label{fig:transition0}
+\end{figure}
+
+\begin{figure}[htb]
+\begin{center}
+\centerline{\includegraphics[width=\columnwidth]{papel/fig/transition1.png}}
+\end{center}
+\caption{Disentanglement of Acute Pathology from Stable Anatomy. In this more complex clinical scenario, both the baseline and the future state share a stable underlying condition (I48), identified by the persistent flutter waves (red arrow). However, the transition vector $\va_t$ again signals the acute onset of I44 (wide QRS complex, black arrow). This demonstrates the model’s objective, it must remain invariant to the action-transparent features (flutter waves) while accurately predicting the pathological ones (wide QRS), effectively distinguishing the acute event from the chronic background.}
+\label{fig:transition1}
+\end{figure}
+
+\paragraph{Architecture.}
+We adopt the JEPA framework, adapted for 1D physiological signals. The system consists of an encoder $\text{Enc}_\theta$ implemented as an xResNet1d50, a 1D-adapted ResNet architecture optimized for time-series following previous ECG classification literature~\citep{strodthoff2024prospects}, which maps the raw waveform $\mX_t$ to a latent representation $\vh_t$. Simultaneously, the sparse difference vector $a_t$ is projected into a continuous action embedding via a multi-layer perceptron (MLP) as a projector $\text{Proj}_\omega$. The Latent Dynamics Predictor $\text{Dyn}_\phi$, a residual MLP, then estimates the future representation $\hat{\vh}_{t+1} = \text{Dyn}_\phi(\text{Enc}_\theta(\mX_t), \text{Proj}_\omega(\va_t))$ based on the current state and given the action. Note that unlike generative models, we predict in latent space, avoiding the complexity of pixel-level reconstruction.
+
+\paragraph{Regularization via SIGReg.}
+A critical failure mode in predictive SSL is representation collapse (mapping all inputs to a constant vector). While methods like VICReg~\citep{bardes2021vicreg} prevent this via heuristic variance-covariance constraints, they introduce brittle hyperparameters that are difficult to tune. We instead employ Sketched Isotropic Gaussian Regularization (SIGReg) from the LeJEPA framework. SIGReg enforces that the distribution of embeddings $\sH$ follows a standard Isotropic Gaussian $\mathcal{N}(\vh;\mathbf{0}, \mI)$ by minimizing the distance between their empirical characteristic functions projected onto random 1D slices.
+
+The total training objective is:
+$$ \mathcal{L} = (1-\lambda) \underbrace{\| \hat{\vh}_{t+1} - \vh_{t+1} \|^2}_{\text{Prediction (Dynamics)}} + \lambda \underbrace{(\text{SIGReg}(\mH_t) + \text{SIGReg}(\mH_{t+1}))}_{\text{Geometry Constraint}} $$
+
+By enforcing an isotropic Gaussian geometry, SIGReg ensures the latent space is maximally entropic (preventing collapse) and rotationally symmetric, which is theoretically optimal for linear separability in downstream tasks. This allows our model to learn rich, manipulable representations of cardiac dynamics without requiring the extensive grid searches associated with contrastive methods.
+
+\paragraph{Downstream Task.}
+To assess whether the learned world model captures clinically relevant features, we evaluate the encoder $\text{Enc}_\theta$ on downstream multi-label classification tasks under two distinct regimes: Linear Probing (Geometry Check); and, Finetuning (Adaptability Check). For the former we freeze the encoder and train a linear head $\text{Cls}_\psi$ on top of $\vh_t$. This tests if the latent space is linearly separable by disease, validating that the SIGReg geometry constraint successfully organized the pathological states. Then, in finetuning, we unfreeze the encoder and update all weights using the supervised classification loss. This tests if the pre-trained initialization places the model in a better optimization basin than random initialization, particularly in low-data regimes.
+
+For both protocols, we utilize the Asymmetric Loss to handle the extreme class imbalance (e.g., Hypertension vs. Rare Arrhythmias) inherent in the dataset.

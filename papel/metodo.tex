@@ -1,0 +1,83 @@
+\section{Method}
+We formalize the cardiac monitoring problem as learning a \emph{world model} that simulates the evolution of the heart's electrophysiological state under pathological perturbations. Unlike standard SSL which enforces invariance to augmentation, our objective is to learn a predictive latent space where disease onset acts as a translational force on the patient's anatomical representation, leveraging patient identity information. Concretely, we instantiate two complementary components of this world model from the same underlying representation: a \emph{dynamics} model that, given a patient's current latent state and a pathological transition, forecasts the resulting future state (Section~\ref{sec:dynamics}); and an \emph{inverse dynamics} model that, given a pair of observed latent states, recovers the transition that must have produced them (Section~\ref{sec:inverse}). The former answers ``what will happen'', the latter ``what changed''; together they let the same encoder be probed both as a simulator and as a diagnostic instrument. The architecture is schematized as in Figure~\ref{fig:architecture}.
+
+\begin{figure}[ht]
+\begin{center}
+\centerline{\includegraphics[width=\columnwidth]{papel/fig/architecture_1_.png}}
+\end{center}
+\caption{Proposed Action-Conditioned World Model Architecture. The framework consists of two stages. Top (Pre-training): the encoder $\text{Enc}_\theta$ maps longitudinal ECG pairs ($\mX_t, \mX_{t+1}$) to latent representations ($\vh_t, \vh_{t+1}$). A dynamics network $\text{Dyn}_\phi$ predicts the future latent state $\hat{\vh}_{t+1}$ conditioned on the current state $\vh_t$ and the pathology transition vector $\va_t = \vy_{t+1}-\vy_t$, processed by projector $\text{Proj}_\omega$. Bottom (Fine-tuning): the learned representation $\vh_t$ is passed to a classifier $\text{Cls}_\psi$ to predict multi-label diagnoses $\hat{\vy}_t$.}
+\label{fig:architecture}
+\end{figure}
+% TODO: a companion panel (or new figure) showing the inverse-dynamics head
+% (d = h_{t+1}-h_t -> onset/resolution logits) and the CEM planning loop
+% would help ground Sections~\ref{sec:inverse} and the CEM paragraph below.
+
+\paragraph{Problem Formulation.}
+Let $\sX$ be the space of 12-lead ECG signals $\mX \in \R^{12 \times T}$ and $\sY$ be the associated set of diagnosis labels $\vy \in \{0,1\}^C$. In longitudinal datasets (e.g., MIMIC-IV), we observe a sequence of states $({\mX}_t, {\vy}_t)$ for a specific patient.
+
+We define the action $\va_t$ not as the static label, but as the transition vector describing the pathological change between time steps:
+$$ \va_t = \vy_{t+1} - \vy_t \in \{-1, 0, 1\}^C $$
+Here, $\va_{t,i}=1$ denotes disease onset, $-1$ denotes resolution, and $0$ implies stability. Both world-model components are built on top of a shared encoder $\text{Enc}_\theta: \sX \rightarrow \sH$, $\vh_t = \text{Enc}_\theta(\mX_t)$, applied independently (i.e., without a stop-gradient target branch) to every ECG in a pair. The dynamics model estimates $\hat{\vh}_{t+1}$ from $\vh_t$ and $\va_t$; the inverse dynamics model estimates $\hat{\va}_t$ from $\vh_t$ and $\vh_{t+1}$. This formulation forces the encoder $\text{Enc}_\theta$ to disentangle Patient Identity (invariant features required to ground the prediction) from Disease State (dynamic features related to $\va_t$).
+
+\paragraph{Dynamics Visualization.}
+To illustrate the transition vector's role in grounding the latent space, we visualize specific longitudinal ECG pairs ($\mX_t,\mX_{t+1}$). In Figure~\ref{fig:transition0}, the action $\va_t$ is active only for label I44, which is morphologically represented by the wide QRS complex (black arrow). In Figure~\ref{fig:transition1}, while $\va_t$ remains still active for I44, both signals share a common stable label in $\vy$ (I48), consequently, this component is transparent in the action vector $\va_{t,\text{I48}}=\vy_{t+1,\text{I48}}-\vy_{t,\text{I48}}=0$, distinct from the flutter waves (red arrow) visible in the traces. Critically, these examples illustrate the disentanglement objective, the model is trained to linearize disease progression, isolating the transition vector as an independent force acting upon a stable, patient-specific substrate.
+
+\begin{figure}[htb]
+\begin{center}
+\centerline{\includegraphics[width=\columnwidth]{papel/fig/transition0.png}}
+\end{center}
+\caption{
+Visualization of a Pure Pathological Transition. This longitudinal pair illustrates a transition where the action vector $\va_t$ is sparse, representing the onset of a single pathology (I44). The baseline signal (top) shows a normal ventricular activation, while the subsequent recording (bottom) exhibits the classic morphological hallmark of I44, a widened QRS complex (black arrow). By conditioning on this transition vector, the world model is trained to simulate the transformation from a healthy baseline to this pathological state within the latent manifold.}
+\label{fig:transition0}
+\end{figure}
+
+\begin{figure}[htb]
+\begin{center}
+\centerline{\includegraphics[width=\columnwidth]{papel/fig/transition1.png}}
+\end{center}
+\caption{Disentanglement of Acute Pathology from Stable Anatomy. In this more complex clinical scenario, both the baseline and the future state share a stable underlying condition (I48), identified by the persistent flutter waves (red arrow). However, the transition vector $\va_t$ again signals the acute onset of I44 (wide QRS complex, black arrow). This demonstrates the model's objective, it must remain invariant to the action-transparent features (flutter waves) while accurately predicting the pathological ones (wide QRS), effectively distinguishing the acute event from the chronic background.}
+\label{fig:transition1}
+\end{figure}
+
+\subsection{Dynamics Model}
+\label{sec:dynamics}
+
+\paragraph{Architecture.}
+The encoder $\text{Enc}_\theta$ is a 1D ResNet, adapted for time-series following previous ECG classification literature~\citep{strodthoff2024prospects}, which maps the raw waveform $\mX_t$ to a latent representation $\vh_t \in \R^{256}$. Simultaneously, the sparse transition vector $\va_t$ is projected into a continuous action embedding via a multi-layer perceptron $\text{Proj}_\omega$. The Latent Dynamics Predictor $\text{Dyn}_\phi$, a residual MLP, then estimates the future representation
+$$ \hat{\vh}_{t+1} = \text{Dyn}_\phi(\vh_t, \text{Proj}_\omega(\va_t)) $$
+from the current state and the given action, where $\vh_t = \text{Enc}_\theta(\mX_t)$ and the target $\vh_{t+1} = \text{Enc}_\theta(\mX_{t+1})$ is produced by the same, un-frozen encoder. Note that unlike generative models, we predict in latent space, avoiding the complexity of pixel-level reconstruction. Training pairs are drawn from consecutive ECGs both within a single hospital stay and across consecutive stays of the same patient, so the model is exposed to both short-term (intra-admission) and long-term (inter-admission) pathological transitions.
+
+\paragraph{Regularization via SIGReg.}
+A critical failure mode in predictive SSL is representation collapse (mapping all inputs to a constant vector). While methods like VICReg~\citep{bardes2021vicreg} prevent this via heuristic variance-covariance constraints, they introduce brittle hyperparameters that are difficult to tune. We instead employ Sketched Isotropic Gaussian Regularization (SIGReg) from the LeJEPA framework. SIGReg enforces that the distribution of embeddings $\sH$ follows a standard Isotropic Gaussian $\mathcal{N}(\vh;\mathbf{0}, \mI)$ by minimizing the distance between their empirical characteristic functions and that of $\mathcal{N}(\mathbf{0},\mI)$, projected onto random 1D slices.
+
+The total training objective is:
+$$ \mathcal{L} = (1-\lambda) \underbrace{\| \hat{\vh}_{t+1} - \vh_{t+1} \|^2}_{\text{Prediction (Dynamics)}} + \lambda \underbrace{(\text{SIGReg}(\mH_t) + \text{SIGReg}(\mH_{t+1}))}_{\text{Geometry Constraint}} $$
+
+By enforcing an isotropic Gaussian geometry, SIGReg ensures the latent space is maximally entropic (preventing collapse) and rotationally symmetric, which is theoretically optimal for linear separability in downstream tasks. This allows our model to learn rich, manipulable representations of cardiac dynamics without requiring the extensive grid searches associated with contrastive methods.
+
+\paragraph{Downstream Task.}
+To assess whether the learned world model captures clinically relevant features, we evaluate the encoder $\text{Enc}_\theta$ under three distinct regimes: Linear Probing (Geometry Check), Finetuning (Adaptability Check), and, uniquely enabled by the dynamics model itself, Planning (Simulator Check).
+
+For Linear Probing, we freeze the encoder and train a linear head $\text{Cls}_\psi$ on top of $\vh_t$. This tests if the latent space is linearly separable by disease, validating that the SIGReg geometry constraint successfully organized the pathological states. For Finetuning, we unfreeze the encoder and update all weights using the supervised classification loss. This tests if the pre-trained initialization places the model in a better optimization basin than random initialization, particularly in low-data regimes. Both regimes use the Asymmetric Loss to handle the extreme class imbalance (e.g., Hypertension vs. Rare Arrhythmias) inherent in the dataset.
+
+For Planning, we bypass the classifier head entirely and query the pre-trained dynamics model directly, treating diagnosis as an inference-time optimization problem rather than a supervised prediction. Given the previous state's latent $\vh_{t-1}$, its known label $\vy_{t-1}$, and the observed current latent $\vh_t$, we search for the transition vector that best explains the observed change:
+$$ \va^\star = \operatorname*{argmin}_{\va \in \{-1,0,1\}^C} \; \| \text{Dyn}_\phi(\vh_{t-1}, \text{Proj}_\omega(\va)) - \vh_t \|^2 $$
+and recover the diagnosis as $\hat{\vy}_t = \text{clip}(\vy_{t-1} + \va^\star,\, 0, 1)$. Crucially, because $\vy_{t-1}$ is already known at inference time and $\va_{t-1,i}$ can only take a single non-zero value given the current label ($+1$, onset, only possible if $\vy_{t-1,i}=0$; $-1$, resolution, only possible if $\vy_{t-1,i}=1$), the direction of any change is not a free parameter of the search: each label dimension only has two admissible outcomes, \emph{stay} or \emph{flip}, with the sign of a flip fixed by $\vy_{t-1,i}$. The search therefore reduces from a three-way categorical over $\{-1,0,1\}$ per label to a single Bernoulli parameter per label, $p_i = P(\text{label } i \text{ flips})$, mirroring the onset/resolution decomposition used by the inverse dynamics model (Section~\ref{sec:inverse}). We optimize these $C$ Bernoulli parameters with the Cross-Entropy Method (CEM): each label dimension $c$ maintains an independent Bernoulli distribution over \{stay, flip\}, initialized with a prior biased toward stability, matching the empirically observed rate of label-stable consecutive pairs. At each iteration we (i) sample a population of candidate flip indicators from the current per-dimension Bernoulli distributions and convert each into a signed action vector using the direction implied by $\vy_{t-1}$, (ii) score every candidate action vector by the dynamics model's reconstruction error against $\vh_t$, (iii) refit each dimension's Bernoulli parameter from the flip rate among the lowest-error elite candidates, smoothed exponentially across iterations, and (iv) keep the best-scoring candidate seen so far. The action returned after the final iteration is used as $\va^\star$. Because Planning requires no additional supervised training on top of the pre-trained weights, it directly probes how much clinically actionable information the dynamics model has captured, independently of the classifier's own capacity.
+
+\subsection{Inverse Dynamics Model}
+\label{sec:inverse}
+
+Complementary to the forward dynamics model, we train an \emph{inverse} dynamics model to recover the pathological transition responsible for an observed pair of latent states, i.e., to answer ``what changed'' rather than ``what will happen''. Given the same encoder $\text{Enc}_\theta$ used above, we compute the pair of embeddings $\vh_t, \vh_{t+1}$ and their displacement $\Delta\vh_t = \vh_{t+1} - \vh_t$, and train an inverse predictor $\text{Inv}_\psi$, a residual MLP, to estimate the transition vector directly from this displacement:
+$$ \hat{\va}_t = \text{Inv}_\psi(\Delta\vh_t) = \text{Inv}_\psi(\vh_{t+1} - \vh_t) $$
+Unlike the forward model, which is trained on all consecutive pairs, the inverse model is trained only on cross-stay pairs, i.e., the first ECG of one hospital stay against the first ECG of the patient's next stay, so that the recovered transition reflects a clinically meaningful inter-admission change in diagnosis rather than short-term intra-stay noise.
+
+\paragraph{Onset and Resolution.}
+A given label $i$ can transition in one of two structurally distinct ways: onset ($\va_{t,i}=+1$), a previously absent pathology newly appears, or resolution ($\va_{t,i}=-1$), a previously present pathology disappears from the record. Treating $\va_t$ as a regression target with an MSE loss, as in the forward model, conflates these two events and their very different base rates. We instead decompose $\text{Inv}_\psi$ into two binary classification heads sharing a common trunk, an onset head and a resolution head, each producing one logit per label:
+$$ \text{onset\_logits}_t,\ \text{res\_logits}_t = \text{Inv}_\psi(\Delta\vh_t) $$
+trained with binary cross-entropy against the onset target $\mathbb{1}[\va_t=+1]$ and the resolution target $\mathbb{1}[\va_t=-1]$ respectively. The total objective mirrors the dynamics model's structure, replacing the MSE prediction term with the sum of the two BCE terms:
+$$ \mathcal{L} = (1-\lambda)\underbrace{\big(\text{BCE}(\text{onset\_logits}_t, \mathbb{1}[\va_t{=}1]) + \text{BCE}(\text{res\_logits}_t, \mathbb{1}[\va_t{=}{-1}])\big)}_{\text{Prediction (Transition)}} + \lambda \underbrace{(\text{SIGReg}(\mH_t) + \text{SIGReg}(\mH_{t+1}))}_{\text{Geometry Constraint}} $$
+with the same SIGReg regularizer as before, over the same encoder.
+
+At evaluation time, the onset and resolution probabilities $\hat p^{\text{ons}}_{t,i} = \sigma(\text{onset\_logits}_{t,i})$ and $\hat p^{\text{res}}_{t,i} = \sigma(\text{res\_logits}_{t,i})$ are combined with the known current label $\vy_t$ into a single contextualized estimate of the next diagnosis state,
+$$ \hat{\vy}_{t+1,i} = \vy_{t,i}\,(1-\hat p^{\text{res}}_{t,i}) + (1-\vy_{t,i})\,\hat p^{\text{ons}}_{t,i}, $$
+i.e., a label already present is predicted to persist with probability $1-\hat p^{\text{res}}_{t,i}$, while an absent label is predicted to appear with probability $\hat p^{\text{ons}}_{t,i}$. This yields a single next-state prediction directly comparable to $\vy_{t+1}$, even though the model itself is never trained to predict an absolute label, only its transition. We report macro AUROC, with bootstrap confidence intervals over the held-out test fold, separately for the onset task, the resolution task, and this contextualized next-state task, in analogy to the Linear Probing (geometry check) protocol used for the forward dynamics model.
