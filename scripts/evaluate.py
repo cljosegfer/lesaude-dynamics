@@ -28,6 +28,7 @@ from models.resnet1d import ResNet1d
 
 def _load_model(ckpt_path: str, embedding_dim: int, device: torch.device):
     ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    
     sd = ckpt["state_dict"]
 
     backbone = ResNet1d(in_channels=12, embedding_dim=embedding_dim)
@@ -83,7 +84,8 @@ def main(cfg):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    backbone, projector = _load_model(cfg.ckpt_path, cfg.embedding_dim, device)
+    backbone, projector = _load_model(cfg.evaluate.ckpt_path, cfg.embedding_dim, device)
+    print(f"backbone: {cfg.evaluate.ckpt_path}")
 
     ds = MIMICLanceDataset(cfg.lance_path, split="test", mode=cfg.evaluate.mode)
     loader = DataLoader(

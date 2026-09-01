@@ -39,6 +39,7 @@ resume_ckpt: false
 resume_weights_only: false
 
 evaluate:
+  ckpt_path: archive/finetune_inverse.ckpt
   num_workers: 4
   n_bootstrap: 1000
   seed: 42

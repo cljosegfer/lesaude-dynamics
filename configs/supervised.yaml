@@ -14,6 +14,7 @@ use_wandb: true
 ckpt_path: checkpoints/supervised_.ckpt
 
 evaluate:
+  ckpt_path: archive/supervised_0.ckpt
   num_workers: 4
   n_bootstrap: 1000
   seed: 0

@@ -34,3 +34,10 @@ ckpt_path_auroc: checkpoints/pretrain_auroc_.ckpt
 resume_ckpt: false
 # False = full resume (optimizer/scheduler/epoch/RNG). True = load weights only.
 resume_weights_only: false
+
+evaluate:
+  ckpt_path: archive/finetune_pretrain_val.ckpt # finetune_pretrain_auroc, finetune_pretrain_val
+  num_workers: 4
+  n_bootstrap: 1000
+  seed: 42
+  mode: triage  # triage | monitoring
