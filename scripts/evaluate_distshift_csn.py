@@ -47,6 +47,7 @@ from models.resnet1d import ResNet1d
 
 def _load_model(ckpt_path: str, embedding_dim: int, num_classes: int, device: torch.device):
     ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    print(f'backbone {ckpt_path} loaded')
     sd = ckpt["state_dict"]
 
     backbone = ResNet1d(in_channels=12, embedding_dim=embedding_dim)
@@ -110,7 +111,7 @@ def _bootstrap_macro_auroc(preds, targets, n_bootstrap: int, seed: int):
     return scores.mean(), np.percentile(scores, 2.5), np.percentile(scores, 97.5)
 
 
-@hydra.main(version_base="1.3", config_path="../configs", config_name="distshift")
+@hydra.main(version_base="1.3", config_path="../configs", config_name="distshift_csn")
 def main(cfg):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")

@@ -13,14 +13,14 @@ seed: 42
 
 # Base encoder to finetune from — the inverse-dynamics pretrained checkpoint
 # (currently the only dynamics-pretrained checkpoint archived on disk).
-pretrained_ckpt: archive/supervised_0.ckpt
+pretrained_ckpt: archive/pretrain_val.ckpt
 # freeze_encoder=true  -> linear probe
 # freeze_encoder=false -> full finetune
 freeze_encoder: false
 
 wandb_project: lesaude-finetune-csn
 use_wandb: true
-ckpt_path: checkpoints/finetune_csn_supervised.ckpt
+ckpt_path: checkpoints/finetune_csn_dyn.ckpt
 
 # Manual resume: path to a `last.ckpt` from an interrupted run's run_dir
 # (e.g. runs/runs/<date>/<time>/<run_id>/checkpoints/last.ckpt). Relative
@@ -34,7 +34,7 @@ resume_weights_only: false
 # scripts/evaluate_csn.py read len(json.load(open(vocabulary_path))) at
 # runtime (94 Dx classes as of the 2026-08 build).
 evaluate:
-  ckpt_path: archive/finetune_csn_supervised.ckpt
+  ckpt_path: archive/finetune_csn_dyn.ckpt
   num_workers: 4
   n_bootstrap: 1000
   seed: 42

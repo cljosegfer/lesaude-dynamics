@@ -22,7 +22,7 @@ evaluate:
   # one, the whole point is testing transfer without further adaptation.
   # Override to compare model types, e.g.:
   #   ++evaluate.ckpt_path=archive/supervised_0.ckpt
-  ckpt_path: archive/supervised_0.ckpt
+  ckpt_path: archive/finetune_pretrain_auroc.ckpt
   num_workers: 4
   n_bootstrap: 1000
   seed: 42
