@@ -1,0 +1,10 @@
+snomed_code,name,mimic_icd10,confidence,notes
+426783006,sinus rhythm (normal),,none,normal finding; not a disease
+164889003,atrial fibrillation,I48,high,
+270492004,1st degree AV block,I44,high,I44.0
+164909002,left bundle branch block,I44,high,I44.7
+59118001,right bundle branch block,I45,high,I45.10
+284470004,premature atrial contraction,I49,high,I49.1
+164884008,ventricular ectopics,I49,high,I49.3; SNOMED synonym of 427172004 (premature ventricular contractions) in CSN's crosswalk
+429622005,ST depression,,none,ECG descriptor
+164931005,ST elevation,,none,ECG descriptor

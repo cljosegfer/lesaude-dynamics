@@ -1,0 +1,11 @@
+data_dir: '/snfs2/josefernandes/datasets/lesaude/cpsc-monolith'
+train_frac: 1.0
+cache: false
+
+# Lance dataset path (populated by scripts/build_lance_cpsc.py). One row per
+# 5000-sample window, not one row per record (CPSC2018 records vary 6-144s;
+# see build_lance_cpsc.py's docstring for the windowing/fold-propagation policy).
+lance_path: '/snfs2/josefernandes/datasets/lesaude/cpsc-monolith/cpsc2018.lance'
+vocabulary_path: '/snfs2/josefernandes/datasets/lesaude/cpsc-monolith/dx_vocabulary_cpsc.json'
+
+spt_runs_dir: 'runs'

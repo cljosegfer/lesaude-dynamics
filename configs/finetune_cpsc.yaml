@@ -1,0 +1,39 @@
+defaults:
+  - data_cpsc
+  - _self_
+
+embedding_dim: 256
+batch_size: 1024
+num_workers: 4
+# Lower LR for finetuning, consistent with configs/finetune.yaml
+lr: 1.0e-4
+weight_decay: 1.0e-2
+max_epochs: 100
+seed: 42
+
+# Base encoder to finetune from.
+pretrained_ckpt: archive/pretrain_val.ckpt
+# freeze_encoder=true  -> linear probe
+# freeze_encoder=false -> full finetune
+freeze_encoder: false
+
+wandb_project: lesaude-finetune-cpsc
+use_wandb: true
+ckpt_path: checkpoints/finetune_cpsc_dyn.ckpt
+
+# Manual resume: path to a `last.ckpt` from an interrupted run's run_dir
+# (e.g. runs/runs/<date>/<time>/<run_id>/checkpoints/last.ckpt). Relative
+# paths are resolved against the original cwd. Leave null for a fresh run
+# (SLURM requeue resume is automatic and doesn't need this).
+resume_ckpt: false
+# False = full resume (optimizer/scheduler/epoch/RNG). True = load weights only.
+resume_weights_only: false
+
+# num_classes is not hardcoded here — scripts/finetune_cpsc.py and
+# scripts/evaluate_cpsc.py read len(json.load(open(vocabulary_path))) at
+# runtime (9 Dx classes as of the current build).
+evaluate:
+  ckpt_path: archive/finetune_cpsc_dyn.ckpt
+  num_workers: 4
+  n_bootstrap: 1000
+  seed: 42

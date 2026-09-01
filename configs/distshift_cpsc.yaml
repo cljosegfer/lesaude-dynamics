@@ -1,0 +1,30 @@
+# Distribution Shift evaluation (papel/experiments.tex): a MIMIC-trained
+# classifier (76-dim sigmoid output, no further finetuning) is applied to
+# CPSC2018 waveforms and scored only on the ICD-10 clusters that have a CPSC2018
+# counterpart via src/dataset/snomed_to_icd10_cpsc.csv.
+#
+# Deliberately standalone rather than composing configs/data.yaml +
+# configs/data_cpsc.yaml — both define a `vocabulary_path` key for their own
+# (different) label space, so composing them would collide.
+
+embedding_dim: 256
+batch_size: 1024
+
+mimic_vocabulary_path: '/snfs2/josefernandes/datasets/lesaude/mimic-iv-ecg-monolith/icd_vocabulary_76.json'
+cpsc_lance_path: '/snfs2/josefernandes/datasets/lesaude/cpsc-monolith/cpsc2018.lance'
+cpsc_vocabulary_path: '/snfs2/josefernandes/datasets/lesaude/cpsc-monolith/dx_vocabulary_cpsc.json'
+
+# high | medium | low — see src/dataset/icd10_crosswalk.py for what each tier means.
+# CPSC2018's crosswalk only uses "high" confidence rows, so all three tiers
+# currently give the same 4-cluster match (I44, I45, I48, I49).
+min_confidence: medium
+
+evaluate:
+  # A MIMIC-trained/finetuned checkpoint (76-dim head) — NOT a CPSC-finetuned
+  # one, the whole point is testing transfer without further adaptation.
+  # Override to compare model types, e.g.:
+  #   ++evaluate.ckpt_path=archive/supervised_0.ckpt
+  ckpt_path: archive/finetune_pretrain_val.ckpt
+  num_workers: 4
+  n_bootstrap: 1000
+  seed: 42
