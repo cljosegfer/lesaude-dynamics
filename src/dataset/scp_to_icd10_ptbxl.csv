@@ -1,0 +1,72 @@
+scp_code,name,mimic_icd10,confidence,notes
+NDT,non-diagnostic T abnormalities,,none,ECG descriptor
+NST_,non-specific ST changes,,none,ECG descriptor
+DIG,digitalis-effect,,none,drug-effect finding not Chapter IX
+LNGQT,long QT-interval,,none,interval measurement finding not disease (R94.31); LQTS itself would be I45.81 but this label is the generic finding
+NORM,normal ECG,,none,normal finding not a disease
+IMI,inferior myocardial infarction,I21,medium,regional MI ECG pattern; acute vs old not distinguishable from scp_codes alone
+ASMI,anteroseptal myocardial infarction,I21,medium,regional MI ECG pattern
+LVH,left ventricular hypertrophy,I51,low,voltage-criteria/structural ECG finding; I51.7 cardiomegaly conventional but weak crosswalk bucket
+LAFB,left anterior fascicular block,I44,high,I44.4
+ISC_,non-specific ischemic,I25,low,generic ischemic ST-T change; acute vs chronic not determinable from this label, chronic-ischemic-disease bucket is a judgment call
+IRBBB,incomplete right bundle branch block,I45,high,I45.0
+1AVB,first degree AV block,I44,high,I44.0
+IVCD,non-specific intraventricular conduction disturbance (block),I45,high,I45.4
+ISCAL,ischemic in anterolateral leads,I25,low,regional ischemic ST-T change, same judgment call as ISC_
+CRBBB,complete right bundle branch block,I45,high,I45.10
+CLBBB,complete left bundle branch block,I44,high,I44.7 (scored equivalent to CSN's 164909002/733534002 left bundle branch block)
+ILMI,inferolateral myocardial infarction,I21,medium,regional MI ECG pattern
+LAO/LAE,left atrial overload/enlargement,I51,low,voltage-criteria atrial-enlargement finding
+AMI,anterior myocardial infarction,I21,medium,regional MI ECG pattern
+ALMI,anterolateral myocardial infarction,I21,medium,regional MI ECG pattern
+ISCIN,ischemic in inferior leads,I25,low,regional ischemic ST-T change
+INJAS,subendocardial injury in anteroseptal leads,I21,low,ischemic ST-T injury pattern not a confirmed infarct; grouped under PTB-XL's own MI diagnostic_class
+LMI,lateral myocardial infarction,I21,medium,regional MI ECG pattern
+ISCIL,ischemic in inferolateral leads,I25,low,regional ischemic ST-T change
+LPFB,left posterior fascicular block,I44,high,I44.5
+ISCAS,ischemic in anteroseptal leads,I25,low,regional ischemic ST-T change
+INJAL,subendocardial injury in anterolateral leads,I21,low,ischemic ST-T injury pattern not a confirmed infarct
+ISCLA,ischemic in lateral leads,I25,low,regional ischemic ST-T change
+RVH,right ventricular hypertrophy,I51,low,voltage-criteria ECG finding
+ANEUR,ST-T changes compatible with ventricular aneurysm,I25,low,chronic-MI-complication finding; I25.3 conventional but weak crosswalk bucket
+RAO/RAE,right atrial overload/enlargement,I51,low,voltage-criteria atrial-enlargement finding
+EL,electrolytic disturbance or drug (former EDIS),,none,metabolic/toxic finding not Chapter IX
+WPW,Wolf-Parkinson-White syndrome,I45,high,I45.6
+ILBBB,incomplete left bundle branch block,I44,high,I44.6/I44.7 family
+IPLMI,inferoposterolateral myocardial infarction,I21,medium,regional MI ECG pattern
+ISCAN,ischemic in anterior leads,I25,low,regional ischemic ST-T change
+IPMI,inferoposterior myocardial infarction,I21,medium,regional MI ECG pattern
+SEHYP,septal hypertrophy,I51,low,hypertrophy finding
+INJIN,subendocardial injury in inferior leads,I21,low,ischemic ST-T injury pattern not a confirmed infarct
+INJLA,subendocardial injury in lateral leads,I21,low,ischemic ST-T injury pattern not a confirmed infarct
+PMI,posterior myocardial infarction,I21,medium,regional MI ECG pattern
+3AVB,third degree AV block,I44,high,I44.2
+INJIL,subendocardial injury in inferolateral leads,I21,low,ischemic ST-T injury pattern not a confirmed infarct
+2AVB,second degree AV block,I44,high,I44.1 (Mobitz type not distinguished at this code)
+ABQRS,abnormal QRS,,none,ECG descriptor
+PVC,ventricular premature complex,I49,high,I49.3
+STD_,non-specific ST depression,,none,ECG descriptor
+VCLVH,voltage criteria (QRS) for left ventricular hypertrophy,I51,low,voltage-criteria ECG finding
+QWAVE,Q waves present,,none,ECG descriptor
+LOWT,low amplitude T-waves,,none,ECG descriptor
+NT_,non-specific T-wave changes,,none,ECG descriptor
+PAC,atrial premature complex,I49,high,I49.1
+LPR,prolonged PR interval,,none,interval measurement finding not disease
+INVT,inverted T-waves,,none,ECG descriptor
+LVOLT,low QRS voltages in the frontal and horizontal leads,,none,generic global low voltage (pericardial effusion/COPD/obesity-adjacent), not chamber-specific, no clean disease bucket
+HVOLT,high QRS voltage,I51,low,generic voltage-criteria finding, same hypertrophy bucket as VCLVH
+TAB_,T-wave abnormality,,none,ECG descriptor
+STE_,non-specific ST elevation,,none,ECG descriptor
+PRC(S),premature complex(es),I49,low,unspecified-origin ectopic beat, catch-all bucket
+SR,sinus rhythm,,none,normal finding not a disease
+AFIB,atrial fibrillation,I48,high,
+STACH,sinus tachycardia,,none,R00.0
+SARRH,sinus arrhythmia,,none,benign normal variant, R00.8 if coded at all
+SBRAD,sinus bradycardia,,none,R00.1
+PACE,normal functioning artificial pacemaker,,none,Chapter XXI (Z95.0 presence of pacemaker) not Chapter IX
+SVARR,supraventricular arrhythmia,I47,low,unspecified supraventricular arrhythmia, catch-all bucket
+BIGU,"bigeminal pattern (unknown origin, SV or Ventricular)",I49,low,origin-unspecified ectopic pattern, catch-all bucket
+AFLT,atrial flutter,I48,high,
+SVTAC,supraventricular tachycardia,I47,high,I47.1
+PSVT,paroxysmal supraventricular tachycardia,I47,high,I47.1 (same family as SVTAC)
+TRIGU,"trigeminal pattern (unknown origin, SV or Ventricular)",I49,low,origin-unspecified ectopic pattern, catch-all bucket

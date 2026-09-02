@@ -1,0 +1,9 @@
+data_dir: '/snfs2/josefernandes/datasets/lesaude/ptbxl-monolith'
+train_frac: 1.0
+cache: false
+
+# Lance dataset path (populated by scripts/build_lance_ptbxl.py)
+lance_path: '/snfs2/josefernandes/datasets/lesaude/ptbxl-monolith/ptbxl.lance'
+vocabulary_path: '/snfs2/josefernandes/datasets/lesaude/ptbxl-monolith/dx_vocabulary_ptbxl.json'
+
+spt_runs_dir: 'runs'

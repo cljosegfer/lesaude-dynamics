@@ -55,6 +55,7 @@ def build_intersection(
     csn_vocab: list[str],
     min_confidence: str = "medium",
     crosswalk_path: Path | str = _CROSSWALK_PATH,
+    code_column: str = "snomed_code",
 ) -> dict:
     """
     Returns:
@@ -68,6 +69,10 @@ def build_intersection(
                                              get its CSN-derived ground truth
       }
     K = number of matched ICD-10 clusters at or above min_confidence.
+
+    code_column names the crosswalk CSV's non-MIMIC code column (default
+    "snomed_code" for CSN/CPSC; pass "scp_code" for PTB-XL's SCP-ECG-coded
+    crosswalk) — the function itself has no SNOMED-specific logic.
     """
     if min_confidence not in _CONFIDENCE_RANK:
         raise ValueError(f"min_confidence must be one of {list(_CONFIDENCE_RANK)}, got {min_confidence!r}")
@@ -82,9 +87,9 @@ def build_intersection(
         code = row["mimic_icd10"]
         if not code or _CONFIDENCE_RANK[row["confidence"]] < rank_floor:
             continue
-        if code not in mimic_idx or row["snomed_code"] not in csn_idx:
+        if code not in mimic_idx or row[code_column] not in csn_idx:
             continue  # stay defensive if either vocab drifts from the crosswalk
-        groups.setdefault(code, []).append(csn_idx[row["snomed_code"]])
+        groups.setdefault(code, []).append(csn_idx[row[code_column]])
 
     icd10_codes = sorted(groups)
     return {
