@@ -70,12 +70,15 @@ def _make_loader(ds: Dataset, batch_size: int, num_workers: int, shuffle: bool) 
 
 @hydra.main(version_base="1.3", config_path="../configs", config_name="pretrain")
 def main(cfg):
+    pair_types = tuple(cfg.pair_types)
+
     # Train: longitudinal pairs (Xt, Xt+1, yt, at)
     train_ds = MIMICLanceDataset(
         cfg.lance_path,
         split="train",
         mode="pair",
         pairs_path=cfg.pairs_path,
+        pair_types=pair_types,
         train_frac=cfg.train_frac,
         cache=cfg.cache,
     )
@@ -85,6 +88,7 @@ def main(cfg):
         split="val",
         mode="pair",
         pairs_path=cfg.pairs_path,
+        pair_types=pair_types,
         cache=cfg.cache,
     )
 

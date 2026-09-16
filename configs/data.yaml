@@ -7,6 +7,8 @@ cache: false
 # Lance dataset paths (populated by scripts/build_lance.py)
 lance_path: '/snfs2/josefernandes/datasets/lesaude/mimic-iv-ecg-monolith/mimic_iv_ecg.lance'
 pairs_path: '/snfs2/josefernandes/datasets/lesaude/mimic-iv-ecg-monolith/pairs.lance'
+# cross-stay pairs pooled over offsets k=1..12 (scripts/build_pairs_multistep.py)
+pairs_multistep_path: '/snfs2/josefernandes/datasets/lesaude/mimic-iv-ecg-monolith/pairs_multistep_k12.lance'
 vocabulary_path: '/snfs2/josefernandes/datasets/lesaude/mimic-iv-ecg-monolith/icd_vocabulary_76.json'
 
 # lance_path: '/scratch/josefernandes/18792/data/mimic_iv_ecg.lance'

@@ -2,6 +2,12 @@ defaults:
   - data
   - _self_
 
+pair_types: [cross_stay]
+# k=1..12 cross-stay pairs (scripts/build_pairs_multistep.py), instead of the
+# traditional pairs.lance (k=1 only). Logged to wandb as a plain hparam, so
+# runs against either file are distinguishable there.
+pairs_path: ${pairs_multistep_path}
+
 embedding_dim: 256
 action_dim: 76
 predictor_hidden_dim: 512
@@ -21,11 +27,11 @@ seed: 42
 
 wandb_project: lesaude-pretrain
 use_wandb: true
-ckpt_path: checkpoints/pretrain_.ckpt
+ckpt_path: checkpoints/pretrain_multistep_.ckpt
 # Best-by-downstream-AUROC checkpoint, saved alongside the best-by-val/loss one
 # above. Same weights-only ModelCheckpoint mechanism, monitoring
 # eval/auroc__MultilabelAUROC_epoch (mode=max) instead.
-ckpt_path_auroc: checkpoints/pretrain_auroc_.ckpt
+ckpt_path_auroc: checkpoints/pretrain_multistep_auroc_.ckpt
 
 # Manual resume: path to a `last.ckpt` from an interrupted run's run_dir
 # (e.g. runs/runs/<date>/<time>/<run_id>/checkpoints/last.ckpt). Relative
