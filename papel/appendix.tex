@@ -1,0 +1,117 @@
+\section{Appendix}
+
+\subsection{Pairing system}
+\label{sec:pairing-appendix}
+
+Longitudinal pairs $(\mX_t, \mX_{t+1})$ for pretraining are constructed directly from MIMIC-IV-ECG's hospital-stay structure, using \texttt{ecg\_no\_within\_stay} (enws) as the per-admission ECG counter and \texttt{subject\_id} to group all ECGs belonging to the same patient, time-ordered by \texttt{ecg\_time}. Two pair types are distinguished:
+
+\begin{itemize}
+\item \textbf{Within-stay}: consecutive ECGs recorded during the same hospital stay, i.e.\ enws increasing between two chronologically adjacent records for a patient. Since ICD-10 diagnosis codes in this dataset are assigned at the hospitalization level (one code set per admission), $\vy_t = \vy_{t+1}$ for essentially every within-stay pair; the transition $\va_t = \text{clip}(\vy_{t+1}-\vy_t,-1,1)$ is almost always the zero vector, so this pair type contributes encoder training signal from waveform variability alone, not from a genuine diagnostic transition.
+\item \textbf{Cross-stay}: the first ECG of stay $N$ paired with the first ECG of stay $N+1$ for the same patient (enws $=0$ on both sides), i.e.\ pairing across separate admissions rather than within one. Because separate hospitalizations frequently carry different discharge diagnoses, this is where the pathology-transition signal $\va_t \ne \vec{0}$ actually concentrates.
+\end{itemize}
+
+Table~\ref{tab:pairing-stats} reports, on the training split (folds 0--17, 721{,}002 exams), the pair count, the stable/active split (stable: $\va_t=\vec{0}$; active: $\lVert\va_t\rVert_0>0$), and the mean number of flipped ICD-10 columns among active pairs, for each pair type. As expected from the per-admission label assignment, within-stay pairs are stable in 160{,}371/160{,}400 ($99.98\%$) of cases; cross-stay pairs are close to evenly split (72{,}386 stable / 77{,}537 active), confirming that admission-to-admission transitions are the primary source of diagnostic-change supervision for the dynamics objective.
+
+\begin{table}[t]
+\caption{Training-split (folds 0--17) pair statistics by pair type. Stable: $\va_t=\vec{0}$ (no ICD-10 column changed between $\vy_t$ and $\vy_{t+1}$). Active: $\lVert\va_t\rVert_0>0$. Mean $\lVert\va_t\rVert_0$ is computed over active pairs only.}
+\label{tab:pairing-stats}
+\centering
+\begin{tabular}{@{}l r r r r@{}}
+\toprule
+\textbf{Pair type} & \textbf{Pairs} & \textbf{Stable} & \textbf{Active} & \textbf{Mean $\lVert\va_t\rVert_0$ (active)} \\
+\midrule
+Within-stay & 160{,}400 & 160{,}371 & 29      & 2.759 \\
+Cross-stay  & 149{,}923 & 72{,}386  & 77{,}537 & 2.476 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Multistep cross-stay pairing.} The cross-stay pairing above only links stay $N$ to stay $N+1$ (hop distance $k=1$). We additionally explore pairing stay $N$ to stay $N+k$ for $k=1,\dots,12$, pooling all hops into a single, larger cross-stay pair set (all such pairs stay within one patient, so pooling introduces no fold leakage). For a patient with $L$ recorded stays, hop $k$ contributes $\max(0, L-k)$ pairs; across the 123{,}960 patients with at least one stay (mean 2.34, median 1, max 125 stays per patient), $k=1$ alone reproduces the 149{,}923-pair count of Table~\ref{tab:pairing-stats} exactly, which we use as a consistency check between the two pair-construction scripts. %TODO: insert the full k=1..12 pair-count / stable-active-proportion table once the multistep sweep (demo/cross\_stay\_multistep\_pairs.py) is finalized.
+
+\subsection{Pairing Scheme Ablation: Pretraining Dynamics}
+\label{sec:pairing-ablation}
+
+We compare three pretraining configurations of the forward Dynamics model (Section~\ref{sec:dynamics}), differing only in which pairs the SSL objective is trained on: (i) the pooled baseline, using both within-stay and cross-stay pairs from the traditional pair index ($k=1$ only); (ii) cross-stay-only, restricting the same traditional pair index to cross-stay pairs; and (iii) multistep cross-stay, pooling cross-stay pairs at every hop $k=1,\dots,12$ (Section~\ref{sec:pairing-appendix}). All three share the same encoder architecture, batch size, and optimizer configuration; only \texttt{pairs\_path} and \texttt{pair\_types} differ.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{papel/fig/pairing_ablation_losses.png}
+\caption{Validation loss curves for the three pairing configurations of Section~\ref{sec:pairing-ablation}: SIGReg regularization loss (left), dynamics prediction loss (middle), and total loss (right), against training step.}
+\label{fig:pairing-ablation-losses}
+\end{figure}
+
+Figure~\ref{fig:pairing-ablation-losses} shows two effects not anticipated from encoder architecture alone. First, cross-stay-only pretraining reaches a visibly higher validation \texttt{pred\_loss} than the pooled baseline, consistent with training on substantially fewer pairs under the same epoch budget: pooling within-stay and cross-stay pairs yields 310{,}323 training pairs (Table~\ref{tab:pairing-stats}), versus 149{,}923 for cross-stay alone, so the restricted run sees under half the unique pairs per epoch and overfits sooner despite within-stay pairs being label-stable ($99.98\%$) and thus contributing mostly waveform-level, rather than transition-level, training signal. Second, the multistep run's \texttt{reg\_loss} sits roughly $5\times$ higher than the baseline's. The SIGReg statistic (Appendix~\ref{sec:sigreg} % TODO: fix ref if the SIGReg formula is documented under a different label
+) is a sliced Epps--Pulley goodness-of-fit statistic that is $O(1)$ under a well-matched (near-Gaussian) embedding distribution but scales linearly with the effective batch size used in its estimator under any sustained deviation from it; since $\lambda$ was calibrated against the baseline configuration's regularizer scale, a shift in that scale — whether from genuinely harder-to-regularize embeddings under the larger, more heterogeneous multistep pair pool, or from an unpinned world-size/batch-scale confound across runs — changes the effective SSL/regularization balance without $\lambda$ itself having been retuned. %TODO: confirm via train/loss_ratio logs and matched world_size across runs before drawing a final conclusion here; update this paragraph once confirmed.
+
+\subsection{Embedding-Space Diagnostic}
+\label{sec:embedding-diagnostic}
+
+To probe what each of the three pretrained Dynamics checkpoints from Section~\ref{sec:pairing-ablation} has actually learned beyond the pretraining loss curves, we run a post-hoc diagnostic on a random batch of validation pairs. For each pair, we compute the actual current- and next-state embeddings $\vh_t=\text{Enc}_\theta(\mX_t)$, $\vh_{t+1}=\text{Enc}_\theta(\mX_{t+1})$, and three candidate predictions of $\vh_{t+1}$ from $\vh_t$: $\hat{\vh}_{t+1}=\text{Dyn}_\phi(\vh_t,\text{Proj}_\omega(\va_t))$ using the pair's true transition; a zero-action baseline $\text{Dyn}_\phi(\vh_t,\text{Proj}_\omega(\vec{0}))$; and a noise-action baseline $\text{Dyn}_\phi(\vh_t,\text{Proj}_\omega(\tilde{\va}_t))$ using a synthetic ternary vector $\tilde{\va}_t$ magnitude-matched to the pair's own true action — $\lVert\tilde{\va}_t\rVert_0=\lVert\va_t\rVert_0$, with flips placed on uniformly random label positions and random $\pm1$ signs — i.e.\ ``right sparsity, wrong labels,'' isolating whether $\text{Dyn}_\phi$ uses \emph{which} labels changed rather than merely how many. We score all three against $\vh_{t+1}$ by MSE and by cosine similarity, both broken down by transition magnitude $\lVert\va_t\rVert_0$ (the number of ICD-10 columns that flip) into all pairs, active pairs ($\lVert\va_t\rVert_0>0$), and stable pairs ($\va_t=\vec{0}$), to test whether each checkpoint's predictions specifically track the size of the diagnostic change rather than being uniformly accurate or uniformly insensitive to $\va_t$.
+
+
+% TODO: the cosine-similarity breakdown and the synthetic-noise-sparsity ablation are still being
+% completed interactively — insert those tables/figures once dynamics_cos_by_magnitude.csv,
+% dynamics_mse_by_magnitude_noise.csv, dynamics_cos_by_magnitude_noise.csv, and the histogram
+% exports are finalized for all three checkpoints.
+
+\begin{table}[t]
+\caption{MSE to $\vh_{t+1}$ (mean / std), for each of the three pretraining checkpoints of Section~\ref{sec:pairing-ablation}, broken down by transition-magnitude group: all pairs, active ($\lVert\va_t\rVert_0>0$), and stable ($\va_t=\vec{0}$). Columns: the do-nothing baseline $\vh_t$, the true-action prediction $\hat{\vh}_{t+1}$, and the zero-/noise-action baselines.}
+\label{tab:embedding-mse}
+\centering
+\resizebox{\textwidth}{!}{
+\begin{tabular}{@{}ll cc cc cc cc@{}}
+\toprule
+& & \multicolumn{2}{c}{$\vh_t$} & \multicolumn{2}{c}{$\hat{\vh}_{t+1}$} & \multicolumn{2}{c}{zero-action} & \multicolumn{2}{c}{noise-action} \\
+\cmidrule(lr){3-4}\cmidrule(lr){5-6}\cmidrule(lr){7-8}\cmidrule(lr){9-10}
+\textbf{Checkpoint} & \textbf{Group} & mean & std & mean & std & mean & std & mean & std \\
+\midrule
+\multirow{3}{*}{Standard (within + cross-stay)}
+ & All    & 0.169 & 0.218 & 0.147 & 0.151 & 0.165 & 0.200 & 0.171 & 0.198 \\
+ & Active & 0.217 & 0.264 & 0.172 & 0.165 & 0.208 & 0.244 & 0.220 & 0.238 \\
+ & Stable & 0.121 & 0.143 & 0.121 & 0.130 & 0.121 & 0.130 & 0.121 & 0.130 \\
+\midrule
+\multirow{3}{*}{Cross-stay only}
+ & All    & 0.183 & 0.225 & 0.168 & 0.174 & 0.180 & 0.207 & 0.180 & 0.196 \\
+ & Active & 0.227 & 0.264 & 0.194 & 0.190 & 0.218 & 0.244 & 0.218 & 0.226 \\
+ & Stable & 0.139 & 0.167 & 0.141 & 0.153 & 0.141 & 0.153 & 0.141 & 0.153 \\
+\midrule
+\multirow{3}{*}{Multistep ($k\le12$)}
+ & All    & 0.110 & 0.135 & 0.104 & 0.108 & 0.109 & 0.124 & 0.111 & 0.123 \\
+ & Active & 0.126 & 0.145 & 0.115 & 0.104 & 0.124 & 0.134 & 0.128 & 0.133 \\
+ & Stable & 0.093 & 0.123 & 0.094 & 0.111 & 0.094 & 0.111 & 0.094 & 0.111 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\subsection{Displacement-Conditioned Dynamics Variant}
+\label{sec:displacement-diagnostic}
+
+The Inverse Dynamics model (Section~\ref{sec:inverse}) is parameterized in terms of the latent displacement $\vd_t = \vh_{t+1}-\vh_t$ rather than the absolute next state. We implement the analogous reparameterization for the forward Dynamics model (\texttt{scripts/pretrain\_displacement.py}, \texttt{configs/pretrain\_displacement.yaml}): $\text{Dyn}_\phi$ is trained to output a predicted displacement $\hat{\vd}_t=\text{Dyn}_\phi(\vh_t,\text{Proj}_\omega(\va_t))$ rather than a predicted next state, and the prediction term of the loss is computed directly against the true displacement,
+\[
+\mathcal{L} = (1-\lambda)\,\text{MSE}\big(\vh_{t+1}-\vh_t,\ \text{Dyn}_\phi(\vh_t,\text{Proj}_\omega(\va_t))\big) + \lambda\,\big(\text{SIGReg}(H_t)+\text{SIGReg}(H_{t+1})\big),
+\]
+with the architecture of $\text{Dyn}_\phi$, the SIGReg regularization, and all other hyperparameters (batch size, optimizer, $\lambda$, learning rate) unchanged from the standard next-state formulation of Section~\ref{sec:dynamics}, so that the two variants differ only in what the predictor's output is trained to represent.
+
+To probe this variant with the same methodology as Section~\ref{sec:embedding-diagnostic}, we reuse its do-nothing / true-action / zero-action / noise-action comparison, reconstructing a next-state prediction for each condition as $\vh_t+\hat{\vd}_t$ so that all four columns of Table~\ref{tab:embedding-mse-displacement} remain directly comparable, in units of MSE to $\vh_{t+1}$, to the corresponding columns of Table~\ref{tab:embedding-mse}.
+
+\begin{table}[t]
+\caption{MSE to $\vh_{t+1}$ (mean / std), for the displacement-conditioned Dynamics variant of this section, on the same do-nothing/true-action/zero-action/noise-action columns as Table~\ref{tab:embedding-mse}. $\hat{\vh}_{t+1}$, zero-action, and noise-action are each reconstructed as $\vh_t+\hat{\vd}_t$ under their respective action input. \emph{n} is the pair count in each group.}
+\label{tab:embedding-mse-displacement}
+\centering
+\resizebox{\textwidth}{!}{
+\begin{tabular}{@{}l cc cc cc cc r@{}}
+\toprule
+& \multicolumn{2}{c}{$\vh_t$} & \multicolumn{2}{c}{$\hat{\vh}_{t+1}$} & \multicolumn{2}{c}{zero-action} & \multicolumn{2}{c}{noise-action} & \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+\textbf{Group} & mean & std & mean & std & mean & std & mean & std & \textbf{n} \\
+\midrule
+All              & 0.172 & 0.219 & 1.300 & 0.644 & 1.255 & 0.629 & 1.305 & 0.660 & 1024 \\
+Active           & 0.220 & 0.268 & 1.341 & 0.728 & 1.252 & 0.703 & 1.352 & 0.755 &  513 \\
+Stable           & 0.124 & 0.141 & 1.258 & 0.546 & 1.258 & 0.546 & 1.258 & 0.546 &  511 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+% Two things stand out relative to the next-state checkpoints of Table~\ref{tab:embedding-mse}. First, the do-nothing baseline $\vh_t$ (which does not involve $\text{Dyn}_\phi$ at all, and so is only a property of the encoder) sits at 0.172/0.220/0.124 for all/active/stable, in the same range as the three next-state checkpoints (0.11--0.23); the displacement encoder has therefore learned a comparable embedding geometry. Second, and in sharp contrast, the reconstructed $\hat{\vh}_{t+1}$ is roughly $6$--$10\times$ \emph{worse} than that same do-nothing baseline (1.300 vs.\ 0.172 overall), whereas every next-state checkpoint in Table~\ref{tab:embedding-mse} improves on its own do-nothing baseline. The zero-action and noise-action reconstructions are statistically indistinguishable from the true-action one in every group (e.g.\ 1.300 vs.\ 1.255 vs.\ 1.305 overall), indicating $\text{Dyn}_\phi$ is not yet using $\va_t$ to modulate $\hat{\vd}_t$ — it instead appears to emit a displacement of roughly fixed, overshooting magnitude regardless of the action embedding it is given. The Stable row's exact three-way tie (1.258/0.546 for $\hat{\vh}_{t+1}$, zero-, and noise-action alike) is expected and reproduces the sanity check of Section~\ref{sec:embedding-diagnostic}: when $\va_t=\vec{0}$, the true, zero-, and magnitude-matched-noise actions are all literally the same zero input to $\text{Dyn}_\phi$.
