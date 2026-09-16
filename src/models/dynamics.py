@@ -128,10 +128,18 @@ class _ResidualBlock(nn.Module):
 
 
 class DynamicsPredictor(nn.Module):
-    """Residual MLP predicting ĥ_{t+1} from current state and action embedding.
+    """Residual MLP mapping current state and action embedding to a predicted
+    state-space delta.
+
+    The architecture is agnostic to what the output is trained against: in
+    scripts/pretrain.py it targets ĥ_{t+1} directly (next-state prediction),
+    while in scripts/pretrain_displacement.py it targets ĥ_{t+1} - h_t
+    (displacement prediction), mirroring the ActionPredictor's use of
+    ht+1 - ht in scripts/inverse_pretrain.py.
 
     Input:  ht (B, embed_dim), action_emb (B, embed_dim)
-    Output: ĥ_{t+1} (B, embed_dim)
+    Output: (B, embed_dim) — either ĥ_{t+1} or the predicted displacement,
+            depending on the training script's loss.
     """
 
     def __init__(self, embed_dim: int = 256, hidden_dim: int = 512):

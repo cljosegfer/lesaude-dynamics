@@ -1,0 +1,49 @@
+defaults:
+  - data
+  - _self_
+
+pair_types: [cross_stay, within_stay]
+# k=1..12 cross-stay pairs (scripts/build_pairs_multistep.py), instead of the
+# traditional pairs.lance (k=1 only). Logged to wandb as a plain hparam, so
+# runs against either file are distinguishable there.
+# pairs_path: ${pairs_multistep_path}
+
+embedding_dim: 256
+action_dim: 76
+predictor_hidden_dim: 512
+# SIGReg weight λ — tune so pred_loss and reg_loss have a ~1:1 to 1:3 gradient magnitude ratio
+lambda_reg: 5.0e-3
+n_slices: 1024
+t_max: 3.0
+n_points: 17
+
+batch_size: 1024
+num_workers: 4
+# Aggressive LR stable for the dynamics task (paper Appendix B)
+lr: 1.0e-3
+weight_decay: 1.0e-2
+max_epochs: 100
+seed: 42
+
+wandb_project: lesaude-pretrain
+use_wandb: true
+ckpt_path: checkpoints/pretrain_displacement_.ckpt
+# Best-by-downstream-AUROC checkpoint, saved alongside the best-by-val/loss one
+# above. Same weights-only ModelCheckpoint mechanism, monitoring
+# eval/auroc__MultilabelAUROC_epoch (mode=max) instead.
+ckpt_path_auroc: checkpoints/pretrain_displacement_auroc_.ckpt
+
+# Manual resume: path to a `last.ckpt` from an interrupted run's run_dir
+# (e.g. runs/runs/<date>/<time>/<run_id>/checkpoints/last.ckpt). Relative
+# paths are resolved against the original cwd. Leave null for a fresh run
+# (SLURM requeue resume is automatic and doesn't need this).
+resume_ckpt: false
+# False = full resume (optimizer/scheduler/epoch/RNG). True = load weights only.
+resume_weights_only: false
+
+evaluate:
+  ckpt_path: archive/finetune_pretrain_displacement_val.ckpt
+  num_workers: 4
+  n_bootstrap: 1000
+  seed: 42
+  mode: triage  # triage | monitoring
