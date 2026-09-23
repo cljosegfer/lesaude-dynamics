@@ -10,7 +10,7 @@ in two different ways: the Classification study (Section~\ref{sec:classification
 \subsection{Contextualized Inference}
 \label{sec:contextualized}
 
-This task asks a model to predict the current diagnosis $\vy_t$ given the current ECG $\mX_t$, the immediately preceding ECG $\mX_{t-1}$, and the previously known diagnosis $\vy_{t-1}$, i.e. it evaluates diagnosis in the same longitudinal setting the world model is trained on, rather than from a single exam in isolation. Both world-model components produce a prediction for this task without any additional supervised training: the Dynamics model uses CEM Planning (Section~\ref{sec:dynamics}) to recover the transition $\va^\star$ that best explains $\vh_t=\text{Enc}_\theta(\mX_t)$ from $\vh_{t-1}=\text{Enc}_\theta(\mX_{t-1})$, giving $\hat{\vy}_t = \text{clip}(\vy_{t-1}+\va^\star,0,1)$; the Inverse Dynamics model is more direct, requiring only a forward pass of $\text{Inv}_\psi(\vh_t-\vh_{t-1})$ and the contextualized onset/resolution combination already described in Section~\ref{sec:inverse}.
+This task asks a model to predict the current diagnosis $\vy_t$ given the current ECG $\mX_t$, the immediately preceding ECG $\mX_{t-1}$, and the previously known diagnosis $\vy_{t-1}$, i.e. it evaluates diagnosis in the same longitudinal setting the world model is trained on, rather than from a single exam in isolation. Both world-model components produce a prediction for this task without any additional supervised training: the Dynamics model uses CEM Planning (Section~\ref{sec:dynamics}) to search for the transition that best explains $\vh_t=\text{Enc}_\theta(\mX_t)$ from $\vh_{t-1}=\text{Enc}_\theta(\mX_{t-1})$, reading the final onset/resolution head parameters through the same contextualized combination as the inverse model; the Inverse Dynamics model is more direct, requiring only a forward pass of $\text{Inv}_\psi(\vh_t-\vh_{t-1})$ and the contextualized onset/resolution combination already described in Section~\ref{sec:inverse}.
 
 % We compare both against three baselines that are each given strictly less information than $(\mX_{t-1},\mX_t,\vy_{t-1})$, isolating which source of information actually drives predictive power:
 % \begin{itemize}
@@ -21,46 +21,48 @@ This task asks a model to predict the current diagnosis $\vy_t$ given the curren
 % Together, these ablations let us attribute the world model's performance on this task to reading the new ECG, knowing the prior diagnosis, or the combination of both through the learned dynamics. Table~\ref{tab:contextualized} reports macro-AUROC for this task on MIMIC-IV-ECG; 95\% confidence intervals from bootstrap resampling are shown in brackets where available.
 
 \begin{table}[t]
-\caption{Contextualized Inference macro-AUROC on MIMIC-IV-ECG (Section~\ref{sec:contextualized}): predicting $\vy_t$ from $\mX_{t-1}, \mX_t, \vy_{t-1}$. Supervised has no mechanism to consume $\vy_{t-1}$ or $\mX_{t-1}$ and cannot be evaluated on this task. 95\% CIs are from bootstrap resampling.}
+\caption{Contextualized Inference macro-AUROC on MIMIC-IV-ECG (Section~\ref{sec:contextualized}): predicting $\vy_t$ from $\mX_{t-1}, \mX_t, \vy_{t-1}$. Supervised has no mechanism to consume $\vy_{t-1}$ or $\mX_{t-1}$ and cannot be evaluated on this task. All rows are evaluated on the same 8{,}062 cross-stay test pairs; 95\% CIs are from 1{,}000 bootstrap resamples. Dynamics uses the cross-stay-only pretraining checkpoint (Appendix~\ref{sec:pairing-ablation}), with candidates ranked by reconstruction error and the soft contextualized readout; its hard readout $\text{clip}(\vy_{t-1}+\va^\star,0,1)$ reaches $0.591$ $[0.580$--$0.603]$ (Appendix~\ref{sec:cem-planning}).}
 \label{tab:contextualized}
 \centering
 \begin{tabular}{@{}l c@{}}
 \toprule
 \textbf{Method} & \textbf{Macro-AUROC} \\
 \midrule
-Dynamics (CEM Planning)   & 0.740 \small{[pending]} \\
-Inverse Dynamics          & 0.8326 \small{[0.8181 -- 0.8456]} \\
+Dynamics (CEM Planning)   & 0.5118 \small{[0.4936 -- 0.5286]} \\
+Inverse Dynamics          & 0.8286 \small{[0.8124 -- 0.8456]} \\
 \addlinespace
 Y-known baseline                   & \emph{pending} \\
 X-known baseline                   & \emph{pending} \\
-Carry-forward             & 0.7553 \small{[0.7435 -- 0.7649]} \\
+Carry-forward             & 0.7515 \small{[0.7361 -- 0.7682]} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
+% The two world-model components behave very differently on this task. The Inverse Dynamics model improves on carry-forward by $7.7$ AUROC points, so the encoder's displacement $\vh_t-\vh_{t-1}$ carries real diagnostic-change information beyond the previous label. CEM Planning with the forward Dynamics model, in contrast, falls well below carry-forward. Appendix~\ref{sec:cem-planning} traces this to the scoring function rather than the search: under $\text{Dyn}_\phi$, the true transition lowers the reconstruction error no more often than chance, while the search finds out-of-distribution action combinations (about $11$ predicted onsets per pair, against $0.67$ in the ground truth) that fit $\vh_t$ far better. Regularizing the search with the transition prior removes these spurious onsets but does not recover a signal, so the forward model, as trained, can simulate transitions it is given but cannot identify which one occurred.
+
 \subsection{Classification}
 \label{sec:classification}
 
-This is the static multi-label classification task, evaluated on a single ECG exam at a time with no longitudinal context. On MIMIC-IV-ECG we report two evaluation protocols: Triage, following \cite{strodthoff2024mimic}, which restricts evaluation to the first ECG of each patient's stay; and Monitoring, which evaluates on every ECG and so also captures the temporal redundancy of multi-record hospital stays. We broaden this study beyond MIMIC by also finetuning on other diagnostic ECG datasets, CSN (Chapman--Shaoxing--Ningbo), CPSC-2018, and PTB-XL, each under its own native label space rather than the MIMIC-derived 76-cluster cardiac action space.
+This is the static multi-label classification task, evaluated on a single ECG exam at a time with no longitudinal context. On MIMIC-IV-ECG we follow the Triage protocol of \cite{strodthoff2024mimic}, which restricts evaluation to the first ECG of each patient's stay. We broaden this study beyond MIMIC by also finetuning on other diagnostic ECG datasets, CSN (Chapman--Shaoxing--Ningbo), CPSC-2018, and PTB-XL, each under its own native label space rather than the MIMIC-derived 76-cluster cardiac action space.
 % This is distinct from the Distribution Shift study (Section~\ref{sec:distshift}): there, labels are matched across datasets and no further training occurs; here, each pretrained encoder is finetuned on the target dataset's own labels, testing whether MIMIC pretraining is a broadly useful initialization even for classification schemes unrelated to the pathology-transition space it was pretrained on. 
 % We compare the Dynamics-pretrained encoder, the Inverse-Dynamics-pretrained encoder, and the naive SSL baseline, each under both the Linear Probing and Finetuning protocols of Section~\ref{sec:dynamics}, against a fully supervised encoder trained from scratch directly on each respective dataset (i.e. without MIMIC pretraining), which serves as a dataset-native performance reference rather than a transferred one. Table~\ref{tab:classification} reports Finetuned macro-AUROC; Linear Probing results are pending.
 
 \begin{table}[t]
-\caption{Finetuned macro-AUROC classification performance across datasets (Section~\ref{sec:classification}). MIMIC is reported under both the Triage (first ECG) and Monitoring (all ECGs) protocols; CSN, CPSC-2018, and PTB-XL are each finetuned on their own native label space. CSN = Chapman--Shaoxing--Ningbo. 95\% CIs are from bootstrap resampling.}
+\caption{Finetuned macro-AUROC classification performance across datasets (Section~\ref{sec:classification}). MIMIC is reported under the Triage (first ECG) protocol; CSN, CPSC-2018, and PTB-XL are each finetuned on their own native label space. CSN = Chapman--Shaoxing--Ningbo. 95\% CIs are from bootstrap resampling.}
 \label{tab:classification}
 \centering
 \resizebox{\textwidth}{!}{
-\begin{tabular}{@{}l ccccc@{}}
+\begin{tabular}{@{}l cccc@{}}
 \toprule
- & \multicolumn{5}{c}{\textbf{Macro-AUROC (Finetuned)}} \\
-\cmidrule(l){2-6}
-\textbf{Method} & \textbf{MIMIC (Triage)} & \textbf{MIMIC (Monitoring)} & \textbf{CSN} & \textbf{CPSC-2018} & \textbf{PTB-XL} \\
+ & \multicolumn{4}{c}{\textbf{Macro-AUROC (Finetuned)}} \\
+\cmidrule(l){2-5}
+\textbf{Method} & \textbf{MIMIC (Triage)} & \textbf{CSN} & \textbf{CPSC-2018} & \textbf{PTB-XL} \\
 \midrule
-Dynamics                  & 0.7500 \small{[0.7395 -- 0.7597]} & 0.8001 \small{[0.7937 -- 0.8061]} & 0.9374 \small{[0.9269 -- 0.9489]} & 0.9472 \small{[0.9282 -- 0.9654]} & 0.8681 \small{[0.8548 -- 0.8821]} \\
-Inverse Dynamics          & 0.7373 \small{[0.7252 -- 0.7510]} & 0.7877 \small{[0.7787 -- 0.7956]} & 0.8958 \small{[0.8806 -- 0.9117]} & 0.9181 \small{[0.8968 -- 0.9386]} & 0.8033 \small{[0.7881 -- 0.8168]} \\
+Dynamics                  & 0.7500 \small{[0.7395 -- 0.7597]} & 0.9374 \small{[0.9269 -- 0.9489]} & 0.9472 \small{[0.9282 -- 0.9654]} & 0.8681 \small{[0.8548 -- 0.8821]} \\
+Inverse Dynamics          & 0.7373 \small{[0.7252 -- 0.7510]} & 0.8958 \small{[0.8806 -- 0.9117]} & 0.9181 \small{[0.8968 -- 0.9386]} & 0.8033 \small{[0.7881 -- 0.8168]} \\
 \addlinespace
-Supervised & 0.7260 \small{[0.7140 -- 0.7386]} & 0.7733 \small{[0.7645 -- 0.7824]} & 0.9215 \small{[0.9115 -- 0.9327]} & 0.9403 \small{[0.9208 -- 0.9573]} & 0.8559 \small{[0.8419 -- 0.8704]} \\
-SSL baseline    & \emph{pending} & \emph{pending} & \emph{pending} & \emph{pending} & \emph{pending} \\
+Supervised & 0.7260 \small{[0.7140 -- 0.7386]} & 0.9215 \small{[0.9115 -- 0.9327]} & 0.9403 \small{[0.9208 -- 0.9573]} & 0.8559 \small{[0.8419 -- 0.8704]} \\
+SSL baseline    & \emph{pending} & \emph{pending} & \emph{pending} & \emph{pending} \\
 \bottomrule
 \end{tabular}
 }
@@ -69,26 +71,24 @@ SSL baseline    & \emph{pending} & \emph{pending} & \emph{pending} & \emph{pendi
 \subsection{Distribution Shift}
 \label{sec:distshift}
 
-Here we test generalization beyond MIMIC-IV-ECG itself. We match ICD-10 codes from MIMIC to the labels available in the smaller external datasets described in Section~\ref{sec:classification}, restricting evaluation to the codes common to both label sets and ignoring the rest. Because this code-matching can be more or less permissive, we report results at three matching thresholds, Low, Medium, and High, which trade off how many labels survive the intersection against how exact the semantic correspondence between a MIMIC cluster and its external counterpart is. 
+Here we test generalization beyond MIMIC-IV-ECG itself. We match ICD-10 codes from MIMIC to the labels available in the smaller external datasets described in Section~\ref{sec:classification}, restricting evaluation to the codes common to both label sets and ignoring the rest. We use the strictest (High) matching threshold, which keeps only labels whose MIMIC cluster has an exact semantic counterpart in the external label set. 
 % Onto this shifted label distribution we transfer, without any further finetuning, the MIMIC-finetuned Dynamics model, the MIMIC-finetuned Inverse Dynamics model, the MIMIC-finetuned naive SSL baseline, and the MIMIC-trained supervised classifier. 
-This tests whether the structure imposed by the action-conditioned latent space transfers more robustly across acquisition sites and populations than a standard supervised classifier. Table~\ref{tab:distshift} reports zero-shot macro-AUROC on CSN and PTB-XL under all three thresholds and on CPSC-2018, whose label overlap with MIMIC only supports the High threshold.
+This tests whether the structure imposed by the action-conditioned latent space transfers more robustly across acquisition sites and populations than a standard supervised classifier. Table~\ref{tab:distshift} reports zero-shot macro-AUROC on CSN, CPSC-2018, and PTB-XL.
 
 \begin{table}[t]
-\caption{Zero-shot Distribution Shift macro-AUROC, Section~\ref{sec:distshift}. All methods are pretrained/finetuned on MIMIC-IV-ECG only and transferred without further training. CSN (Chapman--Shaoxing--Ningbo) and PTB-XL are each reported under three ICD-10 label-matching thresholds; CPSC-2018's label overlap with MIMIC only supports the High threshold. 95\% CIs are from bootstrap resampling.}
+\caption{Zero-shot Distribution Shift macro-AUROC, Section~\ref{sec:distshift}. All methods are pretrained/finetuned on MIMIC-IV-ECG only and transferred without further training, under the High ICD-10 label-matching threshold. CSN = Chapman--Shaoxing--Ningbo. 95\% CIs are from bootstrap resampling.}
 \label{tab:distshift}
 \centering
 \resizebox{\textwidth}{!}{
-\begin{tabular}{@{}l ccc c ccc@{}}
+\begin{tabular}{@{}l ccc@{}}
 \toprule
- & \multicolumn{3}{c}{\textbf{CSN}} & \textbf{CPSC-2018} & \multicolumn{3}{c}{\textbf{PTB-XL}} \\
-\cmidrule(lr){2-4} \cmidrule(lr){5-5} \cmidrule(l){6-8}
-\textbf{Method} & \textbf{Medium} & \textbf{Low} & \textbf{High} & \textbf{High} & \textbf{Medium} & \textbf{Low} & \textbf{High} \\
+\textbf{Method} & \textbf{CSN} & \textbf{CPSC-2018} & \textbf{PTB-XL} \\
 \midrule
-Dynamics                  & 0.8576  \small{[0.8270 -- 0.8797]} & 0.8212  \small{[0.7951 -- 0.8409]} & 0.8454  \small{[0.8291 -- 0.8614]} & 0.7989 \small{[0.7725 -- 0.8251]} & 0.8287 \small{[0.8132 -- 0.8421]} & 0.7844 \small{[0.7685 -- 0.8003]} & 0.8434 \small{[0.8255 -- 0.8575]} \\
-Inverse Dynamics          & 0.8591 \small{[0.8346 -- 0.8794]} & 0.8203 \small{[0.7989 -- 0.8380]} & 0.8498 \small{[0.8333 -- 0.8650]} & 0.7880 \small{[0.7639 -- 0.8133]} & 0.8123 \small{[0.7889 -- 0.8288]} & 0.7677 \small{[0.7517 -- 0.7844]} & 0.8268 \small{[0.7988 -- 0.8457]} \\
+Dynamics                  & 0.8454 \small{[0.8291 -- 0.8614]} & 0.7989 \small{[0.7725 -- 0.8251]} & 0.8434 \small{[0.8255 -- 0.8575]} \\
+Inverse Dynamics          & 0.8498 \small{[0.8333 -- 0.8650]} & 0.7880 \small{[0.7639 -- 0.8133]} & 0.8268 \small{[0.7988 -- 0.8457]} \\
 \addlinespace
-Supervised                & 0.8220 \small{[0.7894 -- 0.8493]} & 0.7822 \small{[0.7537 -- 0.8060]} & 0.8194 \small{[0.8016 -- 0.8367]} & 0.7715 \small{[0.7472 -- 0.7967]} & 0.7896 \small{[0.7671 -- 0.8082]} & 0.7475 \small{[0.7298 -- 0.7654]} & 0.8068 \small{[0.7795 -- 0.8295]} \\
-SSL baseline              & \emph{pending} & \emph{pending} & \emph{pending} & \emph{pending} & \emph{pending} & \emph{pending} & \emph{pending} \\
+Supervised                & 0.8194 \small{[0.8016 -- 0.8367]} & 0.7715 \small{[0.7472 -- 0.7967]} & 0.8068 \small{[0.7795 -- 0.8295]} \\
+SSL baseline              & \emph{pending} & \emph{pending} & \emph{pending} \\
 \bottomrule
 \end{tabular}
 }

@@ -1,0 +1,52 @@
+defaults:
+  - data
+  - _self_
+
+# Forward Dynamics checkpoint to plan with. Use a val/loss-selected checkpoint, never an
+# *_auroc twin (anatomie/action_subspace_planning_report.md §9).
+ckpt_path: archive/pretrain_displacement.ckpt
+# What DynamicsPredictor was trained to output: next_state (scripts/pretrain.py) or
+# displacement (scripts/pretrain_displacement.py). Both save the same state_dict layout;
+# auto reads the training ckpt_path stored in the checkpoint's hyper_parameters.
+dyn_target: auto  # auto | next_state | displacement
+
+# Same pairs as scripts/evaluate_inverse.py and scripts/baseline_carry_forward.py
+# (inverse_pretrain config): k=1 cross-stay pairs from pairs_path. Must be a list.
+pair_types: [cross_stay]
+split: test  # tune on val, report on test
+
+embedding_dim: 256
+action_dim: 76
+predictor_hidden_dim: 512
+
+batch_size: 256
+num_workers: 4
+max_batches: null  # stop after this many batches (smoke tests)
+
+# Reuse (ht, ht1, yt, at) across runs of the same checkpoint/split, e.g. a temperature
+# sweep. Keyed by checkpoint file, pairs file and both Lance dataset versions.
+cache_embeddings: true
+cache_dir: outputs/cem_planning/cache
+
+cem:
+  # null: minimize E(a) alone. τ > 0: minimize E(a)/τ + Σ prior log-odds of each flip,
+  # the negative log-posterior up to a constant. Tune on val, per checkpoint.
+  temperature: null
+  n_samples: 512
+  n_elites: 64
+  n_iters: 16
+  # Weight kept on the previous distribution at each refit (anatomie/cem_planning0.py convention).
+  smoothing: 0.1
+  # Initial P(onset) / P(resolution): per-class train base rates, or one pooled rate per head.
+  prior: base_rate  # base_rate | pooled
+  # Every Bernoulli is clamped to [p_min, 1 - p_min], so rare onsets stay explorable.
+  p_min: 0.005
+  # Candidates scored per Dyn forward pass.
+  chunk_size: 65536
+
+evaluate:
+  n_bootstrap: 1000
+  seed: 42
+
+# Also save per-pair p_ons, p_res, a*, E(0), E(a*), E(a_gt) to cem_arrays.npz in the run dir.
+save_arrays: false

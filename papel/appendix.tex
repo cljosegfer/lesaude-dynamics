@@ -26,7 +26,41 @@ Cross-stay  & 149{,}923 & 72{,}386  & 77{,}537 & 2.476 \\
 \end{tabular}
 \end{table}
 
-\paragraph{Multistep cross-stay pairing.} The cross-stay pairing above only links stay $N$ to stay $N+1$ (hop distance $k=1$). We additionally explore pairing stay $N$ to stay $N+k$ for $k=1,\dots,12$, pooling all hops into a single, larger cross-stay pair set (all such pairs stay within one patient, so pooling introduces no fold leakage). For a patient with $L$ recorded stays, hop $k$ contributes $\max(0, L-k)$ pairs; across the 123{,}960 patients with at least one stay (mean 2.34, median 1, max 125 stays per patient), $k=1$ alone reproduces the 149{,}923-pair count of Table~\ref{tab:pairing-stats} exactly, which we use as a consistency check between the two pair-construction scripts. %TODO: insert the full k=1..12 pair-count / stable-active-proportion table once the multistep sweep (demo/cross\_stay\_multistep\_pairs.py) is finalized.
+\paragraph{Multistep cross-stay pairing.} The cross-stay pairing above only links stay $N$ to stay $N+1$ (hop distance $k=1$). We additionally explore pairing stay $N$ to stay $N+k$ for growing $k$, pooling all hops up to $k$ into a single, larger cross-stay pair set (all such pairs stay within one patient, so pooling introduces no fold leakage). For a patient with $L$ recorded stays, hop $k$ contributes $\max(0, L-k)$ pairs; across the 111{,}573 training patients with at least one stay (mean 2.34, median 1, max 125 stays per patient), $k=1$ alone reproduces the 149{,}923-pair count of Table~\ref{tab:pairing-stats} exactly, which we use as a consistency check between the two pair-construction scripts.
+
+Table~\ref{tab:multistep-offsets} reports, for each hop $k$, the pairs contributed at that hop alone, the cumulative pair count pooling hops $1,\dots,k$, the resulting cumulative stable/active split, and the percentage growth in pool size relative to the current $k=1$-only scheme. Pooling grows the training pool quickly at first (already $+66.9\%$ by $k=2$) and continues growing, if with diminishing returns, out to $k=20$ ($+358.0\%$, i.e.\ a $4.6\times$ larger pool than $k=1$ alone); the active fraction of the cumulative pool rises alongside it, from $51.7\%$ at $k=1$ to $74.0\%$ at $k=20$, since more distant admission pairs are, if anything, slightly more likely to carry a genuine diagnostic change than adjacent ones.
+
+\begin{table}[t]
+\caption{Multistep cross-stay pairing on the training split: pairs contributed at hop $k$ alone, cumulative pairs pooling hops $1,\dots,k$, the cumulative pool's stable/active split, and \% growth in pool size relative to the $k=1$-only scheme (Table~\ref{tab:pairing-stats}).}
+\label{tab:multistep-offsets}
+\centering
+\begin{tabular}{@{}r r r c r@{}}
+\toprule
+\textbf{Hop $k$} & \textbf{Pairs at $k$} & \textbf{Cumulative pairs} & \textbf{Cumulative stable / active} & \textbf{\% vs.\ $k$=1 only} \\
+\midrule
+1  & 149{,}923 & 149{,}923 & 48.3\% / 51.7\% &   0.0 \\
+2  & 100{,}238 & 250{,}161 & 38.5\% / 61.5\% &  66.9 \\
+3  &  74{,}523 & 324{,}684 & 34.6\% / 65.4\% & 116.6 \\
+4  &  58{,}031 & 382{,}715 & 32.4\% / 67.6\% & 155.3 \\
+5  &  46{,}712 & 429{,}427 & 31.0\% / 69.0\% & 186.4 \\
+6  &  38{,}490 & 467{,}917 & 30.0\% / 70.0\% & 212.1 \\
+7  &  32{,}273 & 500{,}190 & 29.3\% / 70.7\% & 233.6 \\
+8  &  27{,}417 & 527{,}607 & 28.7\% / 71.3\% & 251.9 \\
+9  &  23{,}571 & 551{,}178 & 28.2\% / 71.8\% & 267.6 \\
+10 &  20{,}488 & 571{,}666 & 27.8\% / 72.2\% & 281.3 \\
+11 &  17{,}978 & 589{,}644 & 27.5\% / 72.5\% & 293.3 \\
+12 &  15{,}889 & 605{,}533 & 27.2\% / 72.8\% & 303.9 \\
+13 &  14{,}148 & 619{,}681 & 27.0\% / 73.0\% & 313.3 \\
+14 &  12{,}660 & 632{,}341 & 26.8\% / 73.2\% & 321.8 \\
+15 &  11{,}392 & 643{,}733 & 26.6\% / 73.4\% & 329.4 \\
+16 &  10{,}298 & 654{,}031 & 26.5\% / 73.5\% & 336.2 \\
+17 &   9{,}334 & 663{,}365 & 26.3\% / 73.7\% & 342.5 \\
+18 &   8{,}489 & 671{,}854 & 26.2\% / 73.8\% & 348.1 \\
+19 &   7{,}750 & 679{,}604 & 26.1\% / 73.9\% & 353.3 \\
+20 &   7{,}103 & 686{,}707 & 26.0\% / 74.0\% & 358.0 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{Pairing Scheme Ablation: Pretraining Dynamics}
 \label{sec:pairing-ablation}
@@ -115,3 +149,84 @@ Stable           & 0.124 & 0.141 & 1.258 & 0.546 & 1.258 & 0.546 & 1.258 & 0.546
 \end{table}
 
 % Two things stand out relative to the next-state checkpoints of Table~\ref{tab:embedding-mse}. First, the do-nothing baseline $\vh_t$ (which does not involve $\text{Dyn}_\phi$ at all, and so is only a property of the encoder) sits at 0.172/0.220/0.124 for all/active/stable, in the same range as the three next-state checkpoints (0.11--0.23); the displacement encoder has therefore learned a comparable embedding geometry. Second, and in sharp contrast, the reconstructed $\hat{\vh}_{t+1}$ is roughly $6$--$10\times$ \emph{worse} than that same do-nothing baseline (1.300 vs.\ 0.172 overall), whereas every next-state checkpoint in Table~\ref{tab:embedding-mse} improves on its own do-nothing baseline. The zero-action and noise-action reconstructions are statistically indistinguishable from the true-action one in every group (e.g.\ 1.300 vs.\ 1.255 vs.\ 1.305 overall), indicating $\text{Dyn}_\phi$ is not yet using $\va_t$ to modulate $\hat{\vd}_t$ — it instead appears to emit a displacement of roughly fixed, overshooting magnitude regardless of the action embedding it is given. The Stable row's exact three-way tie (1.258/0.546 for $\hat{\vh}_{t+1}$, zero-, and noise-action alike) is expected and reproduces the sanity check of Section~\ref{sec:embedding-diagnostic}: when $\va_t=\vec{0}$, the true, zero-, and magnitude-matched-noise actions are all literally the same zero input to $\text{Dyn}_\phi$.
+
+\subsection{CEM Planning with the Forward Dynamics Model}
+\label{sec:cem-planning}
+
+This section evaluates the Planning procedure of Section~\ref{sec:dynamics}, in which diagnosis is recovered by searching for the transition $\va^\star$ that the forward model $\text{Dyn}_\phi$ judges to best explain an observed pair of embeddings. We report it in full because the outcome is negative, and because the way it fails is informative about what the forward model has, and has not, learned.
+
+\paragraph{Setup.} The search follows Section~\ref{sec:dynamics}: two Bernoulli heads, onset and resolution, masked by the known previous label $\vy_{t-1}$ so that only admissible transitions are proposed. Both are initialized at Laplace-smoothed per-class base rates estimated on the 149{,}923 training cross-stay pairs. The onset rate has mean $0.0104$ and median $0.0028$; the resolution rate has mean $0.476$ and median $0.476$. Each CEM run uses a population of $N=512$ candidates, $K=64$ elites and $16$ iterations. The elite refit keeps weight $0.1$ on the previous distribution. Every Bernoulli parameter is clamped to $[0.005, 0.995]$ so that rare onsets remain explorable. The do-nothing action seeds the incumbent, so $E(\va^\star)\le E(\vec 0)$ by construction. We verified the search on a synthetic oracle energy $E(\va)=\lVert\va-\va_{\text{gt}}\rVert^2$: it recovers the true action exactly for every pair, and all $2.1$M sampled candidates were admissible.
+
+We evaluate all seven forward checkpoints: the three pairing configurations of Section~\ref{sec:pairing-ablation}, the displacement variant of Section~\ref{sec:displacement-diagnostic}, and, for the three next-state configurations, the twin checkpoint selected by the online linear-probe AUROC rather than by validation loss. Evaluation uses exactly the protocol of the inverse model and the carry-forward baseline: the 8{,}062 cross-stay test pairs ($k=1$, fold 19), macro AUROC over classes with both outcomes present, and 1{,}000 bootstrap resamples with a fixed seed. Onset and resolution AUROCs are computed only over the labels where each head is live ($\vy_{t-1,i}=0$ and $\vy_{t-1,i}=1$ respectively). Scoring them over all entries would credit the planner with the structural knowledge that a present label cannot have an onset.
+
+\paragraph{Reference numbers.} Recomputed on the current version of the pair index, the carry-forward baseline $\hat{\vy}_t=\vy_{t-1}$ reaches $0.7515$ $[0.7361$--$0.7682]$ and the inverse dynamics model reaches $0.8286$ $[0.8124$--$0.8456]$ contextualized macro AUROC.
+The inverse model's (unmasked) onset and resolution AUROCs are $0.6591$ and $0.6958$.
+
+\paragraph{Minimizing reconstruction error alone.} Table~\ref{tab:cem-test} reports the planner with candidates ranked by $E(\va)$ alone. For every checkpoint, the contextualized AUROC falls far below carry-forward. The soft readout is at or near chance ($0.45$--$0.55$), and the hard readout reaches only $0.57$--$0.61$.
+
+The diagnostics isolate the cause in the scoring function, not in the search:
+\begin{itemize}
+\item \textbf{The true action carries no signal.} The ground-truth transition beats the do-nothing action in only $47$--$54\%$ of active pairs, where chance is $50\%$. When it does, the mean reduction in $E$ is at most $0.005$ (Table~\ref{tab:cem-test}). This reproduces, on the full test set and for all seven checkpoints, the earlier finding on a single checkpoint that raw reconstruction error does not favour the true action on held-out data.
+\item \textbf{The search exploits the model.} CEM lowers $E$ by $40$--$75\%$ relative to the do-nothing action. It does so with $6$--$12$ onsets per pair, against $0.67$ in the ground truth, and onset precision stays below $2\%$.
+\item \textbf{Every active pair is a model failure.} In every active pair, the returned action scores at least as well as the true one, and it is never the true one. The search is not missing the true action; the model assigns lower error to transitions that never occur.
+\end{itemize}
+In other words, $\text{Dyn}_\phi$ is \emph{controllable} but not \emph{identifiable}: the $2^C$ admissible action codes, most far outside the training distribution of $\approx 2.5$ flips per active pair, span enough of the displacement space to fit a large part of $\vh_t-\vh_{t-1}$, while the one realistic code, the true transition, fits no better than doing nothing.
+
+\begin{table}[t]
+\caption{CEM planning ranked by reconstruction error $E(\va)$ alone, on the 8{,}062 cross-stay test pairs. Contextualized macro AUROC (bootstrap mean [95\% CI]) for the soft readout (final head parameters) and the hard readout ($\text{clip}(\vy_{t-1}+\va^\star)$); masked onset and resolution AUROC; the fraction of active pairs where the true action beats the do-nothing action; mean $E$ of the do-nothing action and of the returned action; and predicted onsets per pair (ground truth $0.67$). Carry-forward: $0.7515$ $[0.7361$--$0.7682]$; inverse dynamics: $0.8286$ $[0.8124$--$0.8456]$. $^\dagger$Checkpoint selected by linear-probe AUROC instead of validation loss.}
+\label{tab:cem-test}
+\centering
+\resizebox{\textwidth}{!}{
+\begin{tabular}{@{}l cc cc c cc c@{}}
+\toprule
+\textbf{Checkpoint} & \textbf{Ctx.\ soft} & \textbf{Ctx.\ hard} & \textbf{Onset} & \textbf{Resol.} & \textbf{$P(E(\va_{\text{gt}})<E(\vec 0))$} & \textbf{$E(\vec 0)$} & \textbf{$E(\va^\star)$} & \textbf{Onsets / pair} \\
+\midrule
+Standard (within + cross-stay)          & 0.518 \small{[0.500--0.537]} & 0.604 \small{[0.590--0.618]} & 0.522 & 0.528 & 0.491 & 0.231 & 0.086 &  8.3 \\
+Cross-stay only                         & 0.512 \small{[0.494--0.529]} & 0.591 \small{[0.580--0.603]} & 0.511 & 0.524 & 0.519 & 0.213 & 0.106 & 11.5 \\
+Multistep ($k\le12$)                    & 0.522 \small{[0.504--0.541]} & 0.598 \small{[0.585--0.611]} & 0.521 & 0.517 & 0.510 & 0.195 & 0.067 & 12.0 \\
+Displacement                            & 0.546 \small{[0.528--0.563]} & 0.610 \small{[0.597--0.624]} & 0.505 & 0.528 & 0.533 & 0.237 & 0.144 &  9.6 \\
+\addlinespace
+Standard$^\dagger$                      & 0.484 \small{[0.468--0.501]} & 0.589 \small{[0.579--0.602]} & 0.504 & 0.539 & 0.482 & 0.272 & 0.075 &  6.4 \\
+Cross-stay only$^\dagger$               & 0.452 \small{[0.434--0.469]} & 0.572 \small{[0.563--0.582]} & 0.499 & 0.516 & 0.539 & 0.296 & 0.072 &  7.5 \\
+Multistep ($k\le12$)$^\dagger$          & 0.477 \small{[0.460--0.495]} & 0.575 \small{[0.566--0.585]} & 0.498 & 0.519 & 0.466 & 0.241 & 0.084 &  9.4 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\paragraph{Prior-regularized objective.} Ranking candidates by $F(\va)=E(\va)/\tau+\sum_{i:\va_i\ne0}\log\frac{1-\pi_i}{\pi_i}$ instead (Section~\ref{sec:dynamics}) makes every flip pay its prior log-odds: about $4.6$--$5.9$ nats for a typical onset, and close to zero, or negative, for a resolution. We swept $\tau\in\{3{\cdot}10^{-4},\dots,1\}$ on the validation split (8{,}244 cross-stay pairs, 100 bootstrap resamples) for all seven checkpoints (Table~\ref{tab:cem-tau}).
+
+The prior removes the exploitation: onsets per pair fall from $8$--$12$ at $\tau\to0$ to $\approx0.3$ at $\tau=10^{-2}$, and to zero for $\tau\ge0.3$. The best soft AUROC improves accordingly, from $0.46$--$0.54$ to $0.57$--$0.59$, but it remains far below validation carry-forward ($0.758$). The hard readout peaks at $0.675$. At no temperature do the masked onset or resolution AUROCs leave the $0.50$--$0.53$ band, so the regularization suppresses spurious transitions without uncovering a real signal. This is consistent with the headroom test above, where the true transition does not lower $E$ in the first place.
+
+\begin{table}[t]
+\caption{Validation contextualized macro AUROC (soft readout) of CEM planning with the prior-regularized objective, as a function of temperature $\tau$ ($\tau=$~none ranks by $E$ alone). The last row gives the mean predicted onsets per pair for the Standard checkpoint (ground truth $0.67$). Validation carry-forward: $0.758$. $^\dagger$Selected by linear-probe AUROC.}
+\label{tab:cem-tau}
+\centering
+\resizebox{\textwidth}{!}{
+\begin{tabular}{@{}l ccccccccc@{}}
+\toprule
+\textbf{Checkpoint} $\backslash$ $\tau$ & none & $3{\cdot}10^{-4}$ & $10^{-3}$ & $3{\cdot}10^{-3}$ & $10^{-2}$ & $3{\cdot}10^{-2}$ & $10^{-1}$ & $0.3$ & $1$ \\
+\midrule
+Standard                          & 0.504 & 0.498 & 0.498 & 0.511 & 0.562 & 0.584 & \textbf{0.586} & 0.580 & 0.580 \\
+Cross-stay only                   & 0.525 & 0.535 & 0.522 & 0.555 & 0.570 & 0.566 & \textbf{0.583} & 0.577 & 0.579 \\
+Multistep ($k\le12$)              & 0.515 & 0.517 & 0.521 & 0.536 & 0.556 & 0.556 & 0.570 & 0.580 & \textbf{0.580} \\
+Displacement                      & 0.545 & 0.556 & 0.555 & 0.553 & 0.561 & 0.555 & 0.577 & \textbf{0.578} & 0.578 \\
+Standard$^\dagger$                & 0.478 & 0.468 & 0.474 & 0.492 & 0.519 & 0.542 & 0.566 & 0.573 & \textbf{0.580} \\
+Cross-stay only$^\dagger$         & 0.457 & 0.442 & 0.443 & 0.458 & 0.500 & 0.533 & 0.565 & 0.571 & \textbf{0.575} \\
+Multistep ($k\le12$)$^\dagger$    & 0.488 & 0.479 & 0.505 & 0.540 & 0.570 & 0.576 & 0.590 & \textbf{0.592} & 0.579 \\
+\midrule
+Onsets / pair (Standard)          & 8.30 & 6.32 & 3.97 & 1.53 & 0.36 & 0.09 & 0.01 & 0.00 & 0.00 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\paragraph{Why the soft readout falls short of carry-forward even at large $\tau$.} As $\tau\to\infty$, $F$ reduces to the prior, whose posterior marginals are exactly the base rates. Reading those marginals through the contextualized combination gives $\vy_{t-1,i}(1-\pi^{\text{res}}_i)+(1-\vy_{t-1,i})\pi^{\text{ons}}_i$, a score that preserves the carry-forward ordering and so matches its AUROC.
+
+CEM's final head parameters are not posterior marginals, however. The elite refit concentrates each Bernoulli on the mode, so every label whose resolution rate exceeds $0.5$ collapses to $p^{\text{res}}_i\approx1$. Its persistence score then falls to $\approx0.005$, tied with the onset scores of absent labels, and the carry-forward ordering is lost ($0.58$ instead of $0.758$). The hard readout suffers the same loss for the same reason: resolving every label whose prior favours resolution scores $0.669$.
+
+A readout based on per-label conditional posteriors around the returned action, $p_i=\sigma\big(F(\va^\star_{i\to0})-F(\va^\star_{i\to\text{flip}})\big)$, would recover carry-forward in the prior limit and add the model's evidence at finite $\tau$. We leave it to future work. Given the headroom results above, we expect it to match, not exceed, carry-forward with the current checkpoints.
+
+\paragraph{Summary.} With the present forward models, CEM planning does not recover diagnostic transitions. Minimizing reconstruction error alone is exploited through out-of-distribution action combinations, and adding the prior removes the exploitation without uncovering signal, because the ground-truth transition is no better than doing nothing under $\text{Dyn}_\phi$. The inverse dynamics model, trained to discriminate transitions directly, reaches $0.8286$ on the same pairs.
+
+Making the forward model usable as a planner likely requires a training objective that explicitly penalizes wrong-action predictions, for example a contrastive term separating $\text{Dyn}_\phi(\vh_t,\text{Proj}_\omega(\va_t))$ from predictions under decoy actions. Besides the posterior-marginal readout, this is the main direction we leave for future work.
