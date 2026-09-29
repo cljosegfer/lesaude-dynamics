@@ -12,14 +12,14 @@ max_epochs: 100
 seed: 42
 
 # Base encoder to finetune from.
-pretrained_ckpt: archive/pretrain_val.ckpt
+pretrained_ckpt: archive/pretrain_multistep.ckpt
 # freeze_encoder=true  -> linear probe
 # freeze_encoder=false -> full finetune
 freeze_encoder: false
 
 wandb_project: lesaude-finetune-cpsc
 use_wandb: true
-ckpt_path: checkpoints/finetune_cpsc_dyn.ckpt
+ckpt_path: checkpoints/finetune_cpsc_multistep.ckpt
 
 # Manual resume: path to a `last.ckpt` from an interrupted run's run_dir
 # (e.g. runs/runs/<date>/<time>/<run_id>/checkpoints/last.ckpt). Relative
@@ -33,7 +33,7 @@ resume_weights_only: false
 # scripts/evaluate_cpsc.py read len(json.load(open(vocabulary_path))) at
 # runtime (9 Dx classes as of the current build).
 evaluate:
-  ckpt_path: archive/finetune_cpsc_dyn.ckpt
+  ckpt_path: archive/finetune_cpsc_dyndispla.ckpt
   num_workers: 4
   n_bootstrap: 1000
   seed: 42

@@ -1,8 +1,9 @@
 """
 Inverse Dynamics Test-Set Evaluation
 ======================================
-Loads an inverse-dynamics checkpoint and reports bootstrap AUROC on
-the held-out test fold for three tasks:
+Loads an inverse-dynamics checkpoint (scripts/inverse_pretrain.py, or the
+inverse head of a scripts/joint_pretrain.py one) and reports bootstrap AUROC
+on the held-out test fold for three tasks:
 
   1. Onset         — sigmoid(onset_logits) vs (at_i == +1)
   2. Resolution    — sigmoid(res_logits)   vs (at_i == -1)
@@ -46,8 +47,10 @@ def _load_model(ckpt_path, embedding_dim, predictor_hidden_dim, action_dim, devi
         hidden_dim=predictor_hidden_dim,
         action_dim=action_dim,
     )
+    # scripts/joint_pretrain.py keeps Dynϕ at projector.pred and puts Invψ at projector.inv
+    prefix = "projector.inv." if any(k.startswith("projector.inv.") for k in sd) else "projector.pred."
     predictor.load_state_dict(
-        {k[len("projector.pred."):]: v for k, v in sd.items() if k.startswith("projector.pred.")}
+        {k[len(prefix):]: v for k, v in sd.items() if k.startswith(prefix)}
     )
 
     backbone.to(device).eval()

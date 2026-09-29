@@ -1,0 +1,65 @@
+defaults:
+  - data
+  - _self_
+
+# k=1..12 cross-stay pairs (scripts/build_pairs_multistep.py), as in pretrain.yaml.
+# Every pair feeds both the forward and the inverse loss.
+pair_types: [cross_stay]
+pairs_path: ${pairs_multistep_path}
+
+embedding_dim: 256
+action_dim: 76
+# Hidden width of both heads (DynamicsPredictor and ActionPredictor)
+predictor_hidden_dim: 512
+# SIGReg weight λ — the forward model's value (pretrain.yaml); inverse_pretrain.yaml uses 2e-3
+lambda_reg: 5.0e-3
+n_slices: 1024
+t_max: 3.0
+n_points: 17
+
+# L = (1-λ) * (dyn_weight * MSE + inv_weight * (BCE_onset + BCE_res)) + λ * SIGReg.
+# On their own runs the two terms sit at the same order (val MSE ≈ 0.18–0.30,
+# val BCE_onset + BCE_res ≈ 0.08–0.11). inv_weight=0 recovers pretrain.py's
+# objective, dyn_weight=0 inverse_pretrain.py's.
+dyn_weight: 1.0
+inv_weight: 1.0
+# BCE positive-class weights, as in inverse_pretrain.yaml (1.0 = no imbalance correction)
+onset_pos_weight: 1.0
+resolution_pos_weight: 1.0
+# Decoy transitions scored per val pair by the CEM probe (eval/cem_auroc, eval/cem_extra_auroc)
+cem_probe_decoys: 16
+
+batch_size: 1024
+num_workers: 4
+# The forward model's LR (pretrain.yaml). archive/inverse.ckpt was trained at 2e-2,
+# but a forward run at 1e-2 reached probe AUROC 0.51 vs 0.58 at 1e-3 (wandb, 2026-08-20).
+lr: 1.0e-3
+weight_decay: 1.0e-2
+max_epochs: 100
+seed: 42
+
+wandb_project: lesaude-joint
+use_wandb: true
+# Best-by-validation-loss (eval/loss) checkpoint — the selection rule behind both
+# reference checkpoints (archive/pretrain_*.ckpt, archive/inverse.ckpt).
+ckpt_path: checkpoints/joint_.ckpt
+# Twins saved by the same weights-only ModelCheckpoint mechanism, selected by
+# the online linear-probe AUROC (eval/auroc__MultilabelAUROC_epoch) and by the
+# inverse head's eval/ctx_auroc instead (both mode=max).
+ckpt_path_auroc: checkpoints/joint_auroc_.ckpt
+ckpt_path_ctx: checkpoints/joint_ctx_.ckpt
+
+# Manual resume: path to a `last.ckpt` from an interrupted run's run_dir
+# (e.g. runs/runs/<date>/<time>/<run_id>/checkpoints/last.ckpt). Relative
+# paths are resolved against the original cwd. Leave null for a fresh run
+# (SLURM requeue resume is automatic and doesn't need this).
+resume_ckpt: false
+# False = full resume (optimizer/scheduler/epoch/RNG). True = load weights only.
+resume_weights_only: false
+
+evaluate:
+  ckpt_path: archive/finetune_joint.ckpt
+  num_workers: 4
+  n_bootstrap: 1000
+  seed: 42
+  mode: triage  # triage | monitoring

@@ -87,6 +87,7 @@ def main(cfg):
     num_classes = len(json.load(open(cfg.vocabulary_path)))
     print(num_classes, cfg.evaluate.ckpt_path)
     backbone, projector = _load_model(cfg.evaluate.ckpt_path, cfg.embedding_dim, num_classes, device)
+    print(f"backbone: {cfg.evaluate.ckpt_path}")
 
     ds = CSNLanceDataset(cfg.lance_path, split="test")
     loader = DataLoader(

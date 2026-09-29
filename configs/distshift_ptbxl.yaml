@@ -15,14 +15,14 @@ ptbxl_lance_path: '/snfs2/josefernandes/datasets/lesaude/ptbxl-monolith/ptbxl.la
 ptbxl_vocabulary_path: '/snfs2/josefernandes/datasets/lesaude/ptbxl-monolith/dx_vocabulary_ptbxl.json'
 
 # high | medium | low — see src/dataset/icd10_crosswalk.py for what each tier means.
-min_confidence: medium
+min_confidence: high
 
 evaluate:
   # A MIMIC-trained/finetuned checkpoint (76-dim head) — NOT a PTB-XL-finetuned
   # one, the whole point is testing transfer without further adaptation.
   # Override to compare model types, e.g.:
   #   ++evaluate.ckpt_path=archive/supervised_0.ckpt
-  ckpt_path: archive/finetune_inverse.ckpt
+  ckpt_path: archive/finetune_pretrain_multistep.ckpt
   num_workers: 4
   n_bootstrap: 1000
   seed: 42
