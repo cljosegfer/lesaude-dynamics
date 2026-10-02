@@ -121,7 +121,7 @@ To probe what each of the three pretrained Dynamics checkpoints from Section~\re
 \subsection{Displacement-Conditioned Dynamics Variant}
 \label{sec:displacement-diagnostic}
 
-The Inverse Dynamics model (Section~\ref{sec:inverse}) is parameterized in terms of the latent displacement $\vd_t = \vh_{t+1}-\vh_t$ rather than the absolute next state. We implement the analogous reparameterization for the forward Dynamics model (\texttt{scripts/pretrain\_displacement.py}, \texttt{configs/pretrain\_displacement.yaml}): $\text{Dyn}_\phi$ is trained to output a predicted displacement $\hat{\vd}_t=\text{Dyn}_\phi(\vh_t,\text{Proj}_\omega(\va_t))$ rather than a predicted next state, and the prediction term of the loss is computed directly against the true displacement,
+The Inverse Dynamics model (Section~\ref{sec:inverse}) is parameterized in terms of the latent displacement $\vd_t = \vh_{t+1}-\vh_t$ rather than the absolute next state. We implement the analogous reparameterization for the forward Dynamics model: $\text{Dyn}_\phi$ is trained to output a predicted displacement $\hat{\vd}_t=\text{Dyn}_\phi(\vh_t,\text{Proj}_\omega(\va_t))$ rather than a predicted next state, and the prediction term of the loss is computed directly against the true displacement,
 \[
 \mathcal{L} = (1-\lambda)\,\text{MSE}\big(\vh_{t+1}-\vh_t,\ \text{Dyn}_\phi(\vh_t,\text{Proj}_\omega(\va_t))\big) + \lambda\,\big(\text{SIGReg}(H_t)+\text{SIGReg}(H_{t+1})\big),
 \]
@@ -230,3 +230,97 @@ A readout based on per-label conditional posteriors around the returned action, 
 \paragraph{Summary.} With the present forward models, CEM planning does not recover diagnostic transitions. Minimizing reconstruction error alone is exploited through out-of-distribution action combinations, and adding the prior removes the exploitation without uncovering signal, because the ground-truth transition is no better than doing nothing under $\text{Dyn}_\phi$. The inverse dynamics model, trained to discriminate transitions directly, reaches $0.8286$ on the same pairs.
 
 Making the forward model usable as a planner likely requires a training objective that explicitly penalizes wrong-action predictions, for example a contrastive term separating $\text{Dyn}_\phi(\vh_t,\text{Proj}_\omega(\va_t))$ from predictions under decoy actions. Besides the posterior-marginal readout, this is the main direction we leave for future work.
+
+\subsection{Joint Forward and Inverse Pretraining}
+\label{sec:joint-pretraining}
+
+The two world-model components have complementary strengths. The forward Dynamics encoder transfers best under finetuning (Table~\ref{tab:classification}), but its forward model cannot be used for planning (Appendix~\ref{sec:cem-planning}). The Inverse Dynamics model gives the best contextualized inference (Table~\ref{tab:contextualized}), with a weaker encoder. This section tests whether a single encoder trained under both objectives obtains both.
+
+\paragraph{Setup.} The forward predictor $\text{Dyn}_\phi$ (with its projector $\text{Proj}_\omega$) and the inverse predictor $\text{Inv}_\psi$ share the encoder $\text{Enc}_\theta$ and nothing else; there is no coupling term between them. With $\vh_t=\text{Enc}_\theta(\mX_t)$ and $\vh_{t+1}=\text{Enc}_\theta(\mX_{t+1})$, the loss adds the prediction terms of Sections~\ref{sec:dynamics} and~\ref{sec:inverse} with equal weight,
+\[
+\mathcal{L} = (1-\lambda)\Big(\text{MSE}\big(\text{Dyn}_\phi(\vh_t,\text{Proj}_\omega(\va_t)),\,\vh_{t+1}\big) + \text{BCE}^{\text{ons}}_t + \text{BCE}^{\text{res}}_t\Big) + \lambda\big(\text{SIGReg}(\mH_t)+\text{SIGReg}(\mH_{t+1})\big),
+\]
+where $\text{BCE}^{\text{ons}}_t$ and $\text{BCE}^{\text{res}}_t$ are the onset and resolution terms of $\text{Inv}_\psi(\vh_{t+1}-\vh_t)$. Both terms are computed on every pair of the multistep cross-stay pool ($k\le12$, 605{,}533 training pairs; Appendix~\ref{sec:pairing-appendix}). 
+% Architectures are unchanged, and the optimizer follows the forward model: AdamW with learning rate $10^{-3}$ and weight decay $10^{-2}$, batch size 1{,}024, $\lambda=5\cdot10^{-3}$, and a linear-warmup cosine schedule over at most 100 epochs (\texttt{scripts/joint\_pretrain.py}, \texttt{configs/joint\_pretrain.yaml}). Training was interrupted after 35 epochs; every selection criterion reported below had peaked by epoch 22. Epochs are counted from 0. Downstream results use the checkpoint with the best validation contextualized AUROC, reached at epoch 4, under exactly the protocols and test sets of Sections~\ref{sec:contextualized}, \ref{sec:classification} and~\ref{sec:distshift}.
+
+\begin{table}[t]
+\caption{Joint pretraining against the single-objective models, on the test sets and protocols of Sections~\ref{sec:contextualized}, \ref{sec:classification} and~\ref{sec:distshift} (macro-AUROC, bootstrap mean [95\% CI]). Joint: epoch-4 checkpoint, selected by validation contextualized AUROC. Dynamics, Inverse Dynamics and Supervised are copied from Tables~\ref{tab:contextualized}, \ref{tab:classification} and~\ref{tab:distshift}; the Dynamics contextualized score is CEM planning. Carry-forward contextualized AUROC: $0.7515$ $[0.7361$--$0.7682]$. The Dynamics and Inverse encoders were pretrained on $k=1$ pairs, the joint encoder on the multistep pool.}
+\label{tab:joint-results}
+\centering
+\resizebox{\textwidth}{!}{
+\begin{tabular}{@{}l cccc@{}}
+\toprule
+\textbf{Task} & \textbf{Dynamics} & \textbf{Inverse Dynamics} & \textbf{Joint} & \textbf{Supervised} \\
+\midrule
+Contextualized inference & 0.5118 \small{[0.4936--0.5286]} & 0.8286 \small{[0.8124--0.8456]} & 0.8264 \small{[0.8104--0.8432]} & -- \\
+\addlinespace
+\multicolumn{5}{@{}l}{\emph{Finetuned}} \\
+MIMIC (Triage) & 0.7500 \small{[0.7395--0.7597]} & 0.7373 \small{[0.7252--0.7510]} & 0.7174 \small{[0.7043--0.7318]} & 0.7260 \small{[0.7140--0.7386]} \\
+CSN            & 0.9374 \small{[0.9269--0.9489]} & 0.8958 \small{[0.8806--0.9117]} & 0.9279 \small{[0.9150--0.9439]} & 0.9215 \small{[0.9115--0.9327]} \\
+CPSC-2018      & 0.9472 \small{[0.9282--0.9654]} & 0.9181 \small{[0.8968--0.9386]} & 0.9359 \small{[0.9113--0.9548]} & 0.9403 \small{[0.9208--0.9573]} \\
+PTB-XL         & 0.8681 \small{[0.8548--0.8821]} & 0.8033 \small{[0.7881--0.8168]} & 0.8674 \small{[0.8530--0.8816]} & 0.8559 \small{[0.8419--0.8704]} \\
+\addlinespace
+\multicolumn{5}{@{}l}{\emph{Distribution shift (zero-shot, High threshold)}} \\
+CSN            & 0.8454 \small{[0.8291--0.8614]} & 0.8498 \small{[0.8333--0.8650]} & 0.8490 \small{[0.8319--0.8648]} & 0.8194 \small{[0.8016--0.8367]} \\
+CPSC-2018      & 0.7989 \small{[0.7725--0.8251]} & 0.7880 \small{[0.7639--0.8133]} & 0.7685 \small{[0.7428--0.7940]} & 0.7715 \small{[0.7472--0.7967]} \\
+PTB-XL         & 0.8434 \small{[0.8255--0.8575]} & 0.8268 \small{[0.7988--0.8457]} & 0.8342 \small{[0.8168--0.8482]} & 0.8068 \small{[0.7795--0.8295]} \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\paragraph{Results.} Table~\ref{tab:joint-results} compares the joint encoder with the single-objective models.
+\begin{itemize}
+\item \textbf{Contextualized inference is retained.} The joint model reaches $0.8264$, within the confidence interval of the Inverse Dynamics model ($0.8286$) and $7.5$ points above carry-forward.
+\item \textbf{Transfer outside MIMIC is mostly retained.} Finetuned on the external datasets, the joint encoder lies between the two single-objective encoders. It is above the Inverse Dynamics encoder with non-overlapping intervals on CSN and PTB-XL, and matches the Dynamics encoder on PTB-XL ($0.8674$ vs.\ $0.8681$). Under distribution shift, all its intervals overlap those of both single-objective models; it is lowest on CPSC-2018 ($0.7685$).
+\item \textbf{The MIMIC Triage advantage is lost.} Finetuned on MIMIC, the joint encoder is the weakest of the four ($0.7174$), below the Dynamics encoder with non-overlapping intervals.
+\end{itemize}
+% These comparisons mix two changes, the objective and the pair set: the Dynamics and Inverse encoders were pretrained on $k=1$ pairs, with their own optimizer settings and selection epochs. The matched reference is the forward-only multistep encoder of Appendix~\ref{sec:pairing-ablation} under the same downstream protocols.
+% TODO: add the forward-only multistep encoder (archive/pretrain_multistep.ckpt, epoch 6) under the same finetuning and distribution-shift protocols; it isolates the joint objective from the change of pair set.
+
+% \paragraph{Training dynamics.} The two heads overfit within the first few epochs, while the encoder keeps improving for longer.
+% \begin{itemize}
+% \item \textbf{The inverse head generalizes only early.} Its validation loss reaches its minimum ($0.108$) at epochs 2--3, barely below a constant predictor at the training base rates ($0.1115$). It then doubles to $0.213$ by epoch 34, while the training loss falls from $0.109$ to $0.019$. The test contextualized AUROC of the co-trained head falls from $0.8264$ at epoch 4 to $0.7796$ at epoch 22 and $0.7599$ at epoch 34 (Table~\ref{tab:joint-refit}); its unmasked onset and resolution AUROCs fall from $0.664$ and $0.668$ to $0.525$ and $0.567$.
+% \item \textbf{The forward head overfits as it does without the inverse term.} Its training MSE falls from $0.30$ to $0.029$ over 35 epochs, while the validation MSE stays at $0.21$--$0.25$ from epoch 3. The forward-only multistep run behaves the same way (training MSE $0.018$ at epoch 34 and $0.0035$ at epoch 99).
+% \item \textbf{The encoder improves for longer.} The online linear probe on $\vh_t$ keeps improving until epoch 22, reaching in 22 epochs about the best value the forward-only multistep run reached in 97.
+% \item \textbf{Planning does not improve.} An online probe scores, for each active validation pair, the fraction of 16 admissible decoy transitions whose energy $E(\va)$ exceeds that of the true transition. The decoys have the same numbers of onsets and resolutions as the true transition, on other labels, so this is a within-pair AUROC with chance at $0.5$. It stays at $0.52$--$0.54$ throughout, as for the forward-only multistep checkpoint ($0.527$ on 2{,}048 validation pairs). Sharing the encoder with the inverse model does not make $\text{Dyn}_\phi$ identifiable (Appendix~\ref{sec:cem-planning}).
+% \end{itemize}
+
+% \paragraph{Why it overfits.} Three properties of the setup favour memorization of individual training ECGs.
+% \begin{itemize}
+% \item \textbf{The multistep pool reuses the same ECGs.} Its 605{,}533 training pairs are drawn from the same 199{,}608 ECGs of 49{,}685 patients as the 149{,}923 $k=1$ pairs. Each ECG appears about 6 times per epoch (up to 24), and the 5\% of patients with the most stays supply 58\% of the pairs (29\% at $k=1$). Memorization follows passes over these ECGs rather than the number of pairs: a joint run on 10\% of the patients also reaches its best validation inverse loss at epoch 3.
+% \item \textbf{The forward target rewards memorization.} The target is the partner ECG's full embedding, part of which cannot be predicted from $\vh_t$ and $\va_t$ (recording noise, lead placement, changes outside the 76 labels). On training pairs, that part can only be reduced by memorizing which ECG follows which. The forward model memorizes at both learning rates we tried ($10^{-3}$, and $10^{-2}$ on 10\% of the patients). The inverse target, a few sparse bits per pair, is much harder to memorize. Trained alone on $k=1$ pairs at learning rate $2\cdot10^{-2}$, the inverse model reaches its best validation loss at epoch 50, and at learning rates from $10^{-2}$ to $9\cdot10^{-2}$ on 10\% of the patients, its training and validation losses stay within $0.014$ after 100 epochs. We have not separated the effect of the forward term from that of the lower learning rate or the pair set.
+% \item \textbf{Nothing regularizes the model.} There is no data augmentation and no dropout, and the weight decay is mild.
+% \end{itemize}
+
+% \paragraph{Where the memorization lives.} To separate the heads from the encoder, we froze each encoder, embedded every ECG of the $k=1$ cross-stay pairs, and trained a fresh inverse head of the same architecture as $\text{Inv}_\psi$ on the 149{,}923 training pairs. The head's epoch was selected on the 8{,}244 validation pairs, and scores are reported on the 8{,}062 test pairs (Table~\ref{tab:joint-refit}). On the Inverse Dynamics model's own encoder, the fresh head recovers the co-trained head's score ($0.829$ vs.\ $0.8286$), which validates the procedure. We also fit a linear head as a probe of memorization: with $256\times152$ weights it cannot memorize the training pairs on its own, so a gap between its training and validation AUROC points to training transitions memorized in the encoder's geometry.
+% \begin{itemize}
+% \item \textbf{Memorization is in both the heads and the encoder.} On the late joint encoders, fresh heads improve on the co-trained heads by $0.02$ (epoch 22) and $0.04$ (epoch 34). They still stay below the epoch-4 encoder, and they reach their best validation score in their first training epoch. The linear head's training--validation gap is $+0.06$ and $+0.08$ on these two encoders and within $\pm0.012$ on every other encoder.
+% \item \textbf{Most of the contextualized gain comes from the head.} A randomly initialized encoder with a trained head reaches $0.810$, about three quarters of the Inverse Dynamics model's gain over carry-forward. On this metric, pretraining adds at most about $0.02$; the head on random features was still improving after 30 epochs.
+% \item \textbf{Joint training adds nothing to contextualized inference.} The forward-only encoder at epoch 6 with a fresh head matches the joint model at epoch 4 ($0.825$ vs.\ $0.8264$). On this task, joint training offers no advantage over fitting the inverse head to a frozen forward encoder.
+% \end{itemize}
+
+% \begin{table}[t]
+% \caption{Contextualized AUROC on the 8{,}062 cross-stay test pairs of frozen encoders, with their co-trained inverse head and with a freshly trained one (Section~\ref{sec:joint-pretraining}). Co-trained head: bootstrap mean [95\% CI]. Fresh head: same architecture as $\text{Inv}_\psi$, trained for 30 epochs on the 149{,}923 training pairs with the epoch selected on the validation pairs; point estimate (on the co-trained heads, this procedure agrees with the bootstrap means within $0.003$). Best epoch: the fresh head's selected epoch, counted from 0; $^\ast$still improving at the last epoch. Linear gap: training minus validation contextualized AUROC of a fresh linear head, a probe of memorized training transitions in the encoder. Carry-forward: $0.7515$.}
+% \label{tab:joint-refit}
+% \centering
+% \resizebox{\textwidth}{!}{
+% \begin{tabular}{@{}l cccc@{}}
+% \toprule
+% \textbf{Frozen encoder} & \textbf{Co-trained head} & \textbf{Fresh head} & \textbf{Best epoch} & \textbf{Linear gap} \\
+% \midrule
+% Random initialization                         & --                              & 0.810 & 29$^\ast$ & --        \\
+% Inverse Dynamics (epoch 65)                   & 0.8286 \small{[0.8124--0.8456]} & 0.829 & 10        & $+0.009$ \\
+% Forward-only multistep, epoch 6               & --                              & 0.825 & 7         & $-0.011$ \\
+% Forward-only multistep, epoch 99              & --                              & 0.790 & 1         & $-0.001$ \\
+% \addlinespace
+% Joint, epoch 4 (best validation contextualized) & 0.8264 \small{[0.8104--0.8432]} & 0.818 & 11        & $-0.012$ \\
+% Joint, epoch 5 (best validation loss)         & 0.8195 \small{[0.8047--0.8334]} & --    & --        & --        \\
+% Joint, epoch 22 (best online probe)           & 0.7796 \small{[0.7590--0.7982]} & 0.799 & 0         & $+0.058$ \\
+% Joint, epoch 34 (last)                        & 0.7599 \small{[0.7386--0.7812]} & 0.795 & 0         & $+0.083$ \\
+% \bottomrule
+% \end{tabular}
+% }
+% \end{table}
+
+% \paragraph{Summary.} Early in training, the joint encoder combines the Inverse Dynamics model's contextualized inference ($0.8264$) with transfer close to the Dynamics encoder outside MIMIC. Its MIMIC Triage finetune is the weakest of the compared encoders, however, and its forward model remains unidentifiable. The objective memorizes training ECGs within the first few epochs, in the heads and in the encoder. Two reference points bound what joint training can add to contextualized inference: a trained head on random features reaches $0.810$, and a head fitted to the frozen forward-only encoder reaches $0.825$. Preventing per-ECG memorization, for instance with waveform augmentation, is the most direct next step; it has not been tested.

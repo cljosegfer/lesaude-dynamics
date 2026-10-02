@@ -11,10 +11,10 @@ max_epochs: 100
 seed: 42
 wandb_project: lesaude-supervised
 use_wandb: true
-ckpt_path: checkpoints/supervised_.ckpt
+ckpt_path: checkpoints/supervised_triage.ckpt
 
 evaluate:
-  ckpt_path: archive/supervised_0.ckpt
+  ckpt_path: archive/supervised_triage.ckpt
   num_workers: 4
   n_bootstrap: 1000
   seed: 0

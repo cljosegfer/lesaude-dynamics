@@ -12,11 +12,11 @@ max_epochs: 100
 seed: 42
 
 # Path to the pretrained encoder checkpoint produced by pretrain.py
-pretrained_ckpt: checkpoints/pretrain_.ckpt
+pretrained_ckpt: archive/pretrain_regula.ckpt
 # freeze_encoder=true  → Linear Probe (Table 1 "Linear Probe" rows)
 # freeze_encoder=false → Full Finetune (Table 1 "Finetuned" rows)
 freeze_encoder: false
 
 wandb_project: lesaude-finetune
 use_wandb: true
-ckpt_path: checkpoints/finetune_.ckpt
+ckpt_path: checkpoints/finetune_regula.ckpt

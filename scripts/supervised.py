@@ -53,7 +53,7 @@ def _make_loader(ds: Dataset, batch_size: int, num_workers: int, shuffle: bool) 
 
 @hydra.main(version_base="1.3", config_path="../configs", config_name="supervised")
 def main(cfg):
-    train_ds = MIMICLanceDataset(cfg.lance_path, split="train", mode="monitoring", train_frac=cfg.train_frac, cache=cfg.cache)
+    train_ds = MIMICLanceDataset(cfg.lance_path, split="train", mode="triage", train_frac=cfg.train_frac, cache=cfg.cache)
     val_ds = MIMICLanceDataset(cfg.lance_path, split="val", mode="triage", cache=cfg.cache)
 
     # cached datasets live entirely in RAM — spawn workers would replicate them

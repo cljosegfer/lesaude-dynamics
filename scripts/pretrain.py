@@ -37,10 +37,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 import lightning as pl
 from functools import partial
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, Subset
 from lightning.pytorch.loggers import WandbLogger
 
 import torchmetrics
+from torchmetrics.utilities import dim_zero_cat
 import stable_pretraining as spt
 
 from dataset.dataset import MIMICLanceDataset
@@ -50,8 +51,19 @@ from utils import check_tcp
 
 
 class _MultilabelAUROC(torchmetrics.classification.MultilabelAUROC):
+    """Macro AUROC over the classes with both outcomes, as scripts/evaluate_inverse.py
+    computes it; torchmetrics' own macro average scores a class with no positives as 0."""
+
+    def __init__(self, num_labels: int):
+        super().__init__(num_labels=num_labels, average=None)
+
     def update(self, preds, target):
         super().update(preds, target.long())
+
+    def compute(self):
+        target = dim_zero_cat(self.target)
+        n_pos  = target.sum(0)
+        return super().compute()[(n_pos > 0) & (n_pos < len(target))].mean()
 
 
 def _make_loader(ds: Dataset, batch_size: int, num_workers: int, shuffle: bool) -> DataLoader:
@@ -91,6 +103,9 @@ def main(cfg):
         pair_types=pair_types,
         cache=cfg.cache,
     )
+    # The pairs table is stored patient by patient, so in-order val batches repeat the same
+    # ECGs and inflate SIGReg; one fixed shuffle keeps the batches identical across epochs.
+    val_ds = Subset(val_ds, torch.randperm(len(val_ds), generator=torch.Generator().manual_seed(cfg.seed)).tolist())
 
     num_workers = 0 if cfg.cache else cfg.num_workers
     train_loader = _make_loader(train_ds, cfg.batch_size, num_workers, shuffle=True)
@@ -156,7 +171,7 @@ def main(cfg):
         target="label",
         probe=nn.Linear(cfg.embedding_dim, 76),
         loss=nn.BCEWithLogitsLoss(),
-        metrics=_MultilabelAUROC(num_labels=76, average="macro"),
+        metrics=_MultilabelAUROC(num_labels=76),
     )
 
     logger    = False
