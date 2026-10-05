@@ -97,16 +97,19 @@ class ActionProjector(nn.Module):
 
     Input:  (B, action_dim)  — float-cast of the int8 transition vector
     Output: (B, embed_dim)
+
+    bias=False maps at = 0 to 0, as scripts/pretrain_displacement.py needs to
+    predict that a stable pair does not move.
     """
 
-    def __init__(self, action_dim: int = 76, embed_dim: int = 256):
+    def __init__(self, action_dim: int = 76, embed_dim: int = 256, bias: bool = True):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(action_dim, embed_dim),
+            nn.Linear(action_dim, embed_dim, bias=bias),
             nn.ReLU(inplace=True),
-            nn.Linear(embed_dim, embed_dim),
+            nn.Linear(embed_dim, embed_dim, bias=bias),
             nn.ReLU(inplace=True),
-            nn.Linear(embed_dim, embed_dim),
+            nn.Linear(embed_dim, embed_dim, bias=bias),
         )
 
     def forward(self, at: torch.Tensor) -> torch.Tensor:

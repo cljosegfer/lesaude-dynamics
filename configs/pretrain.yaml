@@ -42,7 +42,7 @@ resume_ckpt: false
 resume_weights_only: false
 
 evaluate:
-  ckpt_path: archive/finetune_pretrain_multistep.ckpt # finetune_pretrain_auroc, finetune_pretrain_val
+  ckpt_path: runs/runs/20261002/145831/c9ff326e7a8f/checkpoints/finetune_regula.ckpt # finetune_pretrain_auroc, finetune_pretrain_val
   num_workers: 4
   n_bootstrap: 1000
   seed: 42

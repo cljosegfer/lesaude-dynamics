@@ -9,7 +9,9 @@ searches admissible transitions a for the lowest
 
 where target = ht1 for next-state checkpoints (scripts/pretrain.py) and ht1 - ht for
 displacement checkpoints (scripts/pretrain_displacement.py), so E is always the MSE of
-the implied next state against ht1. With cem.temperature = τ the search instead
+the implied next state against ht1. Action-only displacement checkpoints (the current
+scripts/pretrain_displacement.py) have no Dynϕ: with their action map g,
+E(a) = mean_D ||ht1 - ht - g(a)||^2. With cem.temperature = τ the search instead
 minimizes the negative log-posterior (up to a constant)
 
     F(a) = E(a) / τ + Σ_i [a_i ≠ 0] · log((1 - π_i) / π_i)
@@ -53,6 +55,7 @@ from hydra.utils import get_original_cwd
 import lance
 import numpy as np
 import torch
+import torch.nn as nn
 from omegaconf import OmegaConf
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -165,6 +168,14 @@ class OnsetResolutionCEM:
         }
 
 
+class _ActionOnly(nn.Module):
+    """Dynϕ stand-in for action-only checkpoints: the projector slot holds their action map,
+    which already outputs the predicted displacement g(a), so the state is ignored."""
+
+    def forward(self, ht, action_emb):
+        return action_emb
+
+
 def _load_model(ckpt_path, embedding_dim, predictor_hidden_dim, action_dim, device):
     ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     sd = ckpt["state_dict"]
@@ -174,25 +185,37 @@ def _load_model(ckpt_path, embedding_dim, predictor_hidden_dim, action_dim, devi
         {k[len("backbone."):]: v for k, v in sd.items() if k.startswith("backbone.")}
     )
 
-    projector = ActionProjector(action_dim=action_dim, embed_dim=embedding_dim)
-    projector.load_state_dict(
-        {k[len("projector.proj."):]: v for k, v in sd.items() if k.startswith("projector.proj.")}
-    )
+    action = {k[len("projector.action."):]: v for k, v in sd.items() if k.startswith("projector.action.")}
+    if action:
+        # scripts/pretrain_displacement.py: displacement from the action alone, a bias-free
+        # linear map (action_model=linear) or a bias-free ActionProjector (action_model=mlp)
+        projector = (nn.Linear(action_dim, embedding_dim, bias=False) if set(action) == {"weight"}
+                     else ActionProjector(action_dim=action_dim, embed_dim=embedding_dim, bias=False))
+        projector.load_state_dict(action)
+        predictor = _ActionOnly()
+    else:
+        projector = ActionProjector(action_dim=action_dim, embed_dim=embedding_dim)
+        projector.load_state_dict(
+            {k[len("projector.proj."):]: v for k, v in sd.items() if k.startswith("projector.proj.")}
+        )
 
-    predictor = DynamicsPredictor(embed_dim=embedding_dim, hidden_dim=predictor_hidden_dim)
-    predictor.load_state_dict(
-        {k[len("projector.pred."):]: v for k, v in sd.items() if k.startswith("projector.pred.")}
-    )
+        predictor = DynamicsPredictor(embed_dim=embedding_dim, hidden_dim=predictor_hidden_dim)
+        predictor.load_state_dict(
+            {k[len("projector.pred."):]: v for k, v in sd.items() if k.startswith("projector.pred.")}
+        )
 
     for module in (backbone, projector, predictor):
         module.to(device).eval()
     return backbone, projector, predictor, ckpt.get("hyper_parameters") or {}
 
 
-def _resolve_dyn_target(dyn_target, hparams):
+def _resolve_dyn_target(dyn_target, hparams, action_only):
+    if action_only:
+        assert dyn_target in ("auto", "displacement"), "action-only checkpoints predict a displacement"
+        return "displacement"
     if dyn_target != "auto":
         return dyn_target
-    # pretrain.py and pretrain_displacement.py save identical state_dict layouts; the
+    # pretrain.py and the older pretrain_displacement.py save identical state_dict layouts; the
     # training run's ckpt_path is the only record of which loss produced the weights.
     return "displacement" if "displacement" in str(hparams.get("ckpt_path", "")) else "next_state"
 
@@ -364,7 +387,7 @@ def main(cfg):
     backbone, projector, predictor, hparams = _load_model(
         ckpt_path, cfg.embedding_dim, cfg.predictor_hidden_dim, cfg.action_dim, device
     )
-    dyn_target = _resolve_dyn_target(cfg.dyn_target, hparams)
+    dyn_target = _resolve_dyn_target(cfg.dyn_target, hparams, isinstance(predictor, _ActionOnly))
     print(f"Dynamics target: {dyn_target}  "
           f"(dyn_target={cfg.dyn_target}; trained as {hparams.get('ckpt_path', '?')}, "
           f"pair_types={hparams.get('pair_types', '?')}, pairs={Path(str(hparams.get('pairs_path', '?'))).name})")

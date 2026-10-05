@@ -4,10 +4,12 @@ defaults:
 
 # Forward Dynamics checkpoint to plan with. Use a val/loss-selected checkpoint, never an
 # *_auroc twin (anatomie/action_subspace_planning_report.md §9).
-ckpt_path: archive/pretrain_displacement.ckpt
+# ckpt_path: archive/pretrain_regula_auroc.ckpt
+ckpt_path: runs/runs/20261002/200605/72b25e409975/checkpoints/pretrain_displacement_linear_.ckpt
 # What DynamicsPredictor was trained to output: next_state (scripts/pretrain.py) or
 # displacement (scripts/pretrain_displacement.py). Both save the same state_dict layout;
 # auto reads the training ckpt_path stored in the checkpoint's hyper_parameters.
+# Action-only checkpoints (the current pretrain_displacement.py) are always displacement.
 dyn_target: auto  # auto | next_state | displacement
 
 # Same pairs as scripts/evaluate_inverse.py and scripts/baseline_carry_forward.py
