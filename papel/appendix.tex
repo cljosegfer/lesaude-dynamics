@@ -324,3 +324,76 @@ PTB-XL         & 0.8434 \small{[0.8255--0.8575]} & 0.8268 \small{[0.7988--0.8457
 % \end{table}
 
 % \paragraph{Summary.} Early in training, the joint encoder combines the Inverse Dynamics model's contextualized inference ($0.8264$) with transfer close to the Dynamics encoder outside MIMIC. Its MIMIC Triage finetune is the weakest of the compared encoders, however, and its forward model remains unidentifiable. The objective memorizes training ECGs within the first few epochs, in the heads and in the encoder. Two reference points bound what joint training can add to contextualized inference: a trained head on random features reaches $0.810$, and a head fitted to the frozen forward-only encoder reaches $0.825$. Preventing per-ECG memorization, for instance with waveform augmentation, is the most direct next step; it has not been tested.
+
+\subsection{Signal-Space Decoder}
+\label{sec:decoder}
+
+The diagnostics of Appendices~\ref{sec:embedding-diagnostic} and~\ref{sec:cem-planning} stay in latent space: both compare $\text{Dyn}_\phi(\vh_t,\text{Proj}_\omega(\va_t))$ with $\vh_{t+1}$ by squared error. Neither says whether $\text{Dyn}_\phi$ moves an embedding the way a diagnostic transition changes the ECG, for instance whether the onset of a conduction block reshapes the QRS complex.
+
+We decode each estimate of $\vh_{t+1}$ and compare it with the real next ECG, and we decode the predictions under the true action and under control actions to see which of them reproduce the observed change. We write $\hat{\vh}_{t+1}(\va)=\text{Dyn}_\phi(\vh_t,\text{Proj}_\omega(\va))$, $\text{Dec}(\vh)$ for the decoded signal, and use the Standard forward checkpoint (within- and cross-stay pairs, selected by validation loss; Appendix~\ref{sec:pairing-ablation}).
+
+\paragraph{Decoding targets.} The encoder pools over time, so $\vh$ does not record where the beats fall in the 10\,s window. On 8\,s crops of validation ECGs, shifting the crop by 20\,ms to 2\,s moves $\vh$ by only $0.3$--$0.8\%$ of the mean squared distance between two unrelated ECGs ($8$--$24\%$ for a randomly initialized encoder). A decoder of the raw $12\times5000$ strip would therefore learn an average over beat positions. We decode what $\vh$ can carry instead: the 12-lead median beat, from $0.4$\,s before to $0.6$\,s after the QRS complex ($12\times500$ samples at 500\,Hz, in the input's per-lead z-units), together with the heart rate and the RR irregularity (normalized RMSSD). Beats are extracted by detecting QRS complexes on the lead-summed squared slope of a 5--20\,Hz band-passed signal, re-aligning each beat to a first-pass median by cross-correlation ($\pm20$\,ms), and taking the per-lead median. $99.7\%$ of the 800{,}035 ECGs yield at least three complete beats.
+
+\paragraph{Decoder.} An MLP ($256\to1024\to1024$, ReLU) with a beat head and a rhythm head is trained with squared error on the frozen, standardized embeddings of every ECG in folds 0--17 (718{,}922 ECGs). Its epoch is selected on fold 18 and scores are reported on fold 19. It explains $53\%$ of the variance of the test beats ($R^2=0.532$, against $0.719$ on the features of a randomly initialized encoder: pretraining discards beat detail) and decodes the heart rate with correlation $0.87$. Decoding $\vh_{t+1}$ instead of $\vh_t$ lowers the beat error to the next ECG by $21\%$ ($0.259$ vs.\ $0.329$ on the cross-stay test pairs), so the embeddings do carry the change between visits.
+
+\paragraph{Counterfactual comparison.} Following the headroom tests of the planning analysis (Appendix~\ref{sec:cem-planning}), which compare the true transition with the do-nothing action, we compare the decoded prediction under the true action $\va_t$ with two controls. The \emph{zero action}, $\text{Dec}(\hat{\vh}_{t+1}(\vec 0))$, shows what the state pathway does alone. The \emph{decoy action} $\tilde{\va}_t$ is admissible given $\vy_t$ and has the same numbers of onsets and resolutions as $\va_t$, placed at random on labels that $\va_t$ leaves unchanged. A model that uses \emph{which} labels change should reproduce the observed transition under $\va_t$ and not under $\tilde{\va}_t$.
+
+Beats are compared by shape rather than by squared error, because shrinking the old beat toward the population mean lowers the error without producing the new morphology. Let $\mB_t$ and $\mB_{t+1}$ be the real median beats of $\mX_t$ and $\mX_{t+1}$, and $\rho$ the correlation of per-lead mean-centred beats over the three leads where the beat changes most. The shape score
+\[
+s(\vb)=\rho(\vb,\mB_{t+1})-\rho(\vb,\mB_t)
+\]
+is positive when a beat $\vb$ looks more like the new beat than the old one; a flattened copy of $\mB_t$ still scores negative. We keep the active test pairs whose beat changes most (the $10\%$ with the lowest $\rho(\mB_t,\mB_{t+1})$, 410 pairs) and on which the decoder sees both morphologies ($s(\text{Dec}(\vh_t))\le-0.2$ and $s(\text{Dec}(\vh_{t+1}))\ge0.2$). This leaves 179 pairs, ranked by $s(\text{Dec}(\hat{\vh}_{t+1}(\va_t)))$. Leads with fewer than ten distinct amplitude values in either beat are excluded, since z-scoring a nearly flat lead turns its quantization steps into spurious shape changes.
+
+To quantify a counterfactual, we compare the effect of each action relative to the zero action, $\text{Dec}(\hat{\vh}_{t+1}(\va))-\text{Dec}(\hat{\vh}_{t+1}(\vec 0))$. The correlation between the decoy's effect and the true action's is $1$ when the model produces the same change whatever the labels, and should be low for an action-specific model.
+
+\paragraph{Comparison with the zero action.} Figure~\ref{fig:decoder-top} shows the two highest-ranked pairs. In the first, the tall R waves of $\mX_t$ in aVL and V5 give way in $\mX_{t+1}$ to broad negative complexes in III and aVL and a small RS complex in V5; the action includes the onsets of acute myocardial infarction (I21) and of a conduction block (I44). The decoded $\vh_{t+1}$ shows the new complexes and the decoded $\vh_t$ keeps the old R waves. The decoded prediction follows the new morphology as closely as the ceiling: its correlation with $\mB_{t+1}$ and $\mB_t$ is $0.91$ and $-0.01$, against $0.91$ and $0.00$ for the decoded $\vh_{t+1}$. The zero action does not produce this change ($s=-0.33$, against $0.91$ under $\va_t$), so here the action moves the beat. In the second pair, by contrast, the zero action already reproduces the change ($s=0.84$): there it is the state pathway that moves the beat.
+
+Such examples are rare. The decoded prediction looks more like $\mB_{t+1}$ than like $\mB_t$ in 10 of the 179 pairs ($6\%$), and the zero action in 4. In the median pair, the prediction closes $3\%$ of the gap in $s$ between the decoded $\vh_t$ and the decoded $\vh_{t+1}$, and in 53 pairs it moves away from $\mB_{t+1}$. Figure~\ref{fig:decoder-middle-bottom} shows the middle- and last-ranked pairs: the decoded $\vh_{t+1}$ reproduces the new morphology (a tall R wave in V5; a complete QRS inversion in III, aVL and aVF), while the decoded prediction lies on the decoded $\vh_t$. In squared error the prediction still beats do-nothing on $72\%$ of the 179 pairs, by shrinking the old beat rather than changing its shape.
+
+\paragraph{Comparison with a decoy action.} Figures~\ref{fig:decoder-decoy-1} and~\ref{fig:decoder-decoy-2} add the decoy prediction to the four highest-ranked pairs.
+\begin{itemize}
+\item \textbf{An action-specific case.} In the third pair, the true action (onsets of cardiomyopathy I42, conduction block I44 and heart failure I50) inverts the QRS complexes of aVR, V5 and V6 toward $\mB_{t+1}$. The decoy (onsets I01, I66, I99) stays on the decoded $\vh_t$: its effect is $0.18\times$ the size of the true action's and correlates with it at $0.27$.
+\item \textbf{A partly generic case.} In the first pair, the decoy shares no label with $\va_t$ but still reproduces part of the change in III and aVL, with an effect $0.54\times$ the size of the true action's and correlation $0.62$.
+\item \textbf{Overall.} On the 2{,}724 active test pairs that admit a decoy, the decoy's effect is as large as the true action's (median ratio $1.08$) and correlates with it at a median of $0.39$ ($0.32$ over the 118 selected pairs that admit one). Among those 118 pairs, the decoy produces the new morphology in $2\%$, against $6\%$ for the true action over all 179.
+\end{itemize}
+$\text{Dyn}_\phi$ therefore moves the beat by about the same amount whatever labels change, partly along a direction shared by all transitions, with a small label-specific component. These pairs cannot tell whether a decoy's decoded change shows the features its own labels would cause, because no patient undergoes the decoy transition; that would require comparing with the change averaged over the pairs where those labels actually flip. Figure~\ref{fig:decoder-decoy-middle-bottom} repeats the middle and last pairs with the decoy: neither the true action nor the decoy produces the new morphology, and both predictions stay on the decoded $\vh_t$.
+
+\paragraph{Summary.} The decoder recovers the change between visits from $\vh_{t+1}$, but the forward model rarely predicts it. Its improvement over do-nothing in latent space is accounted for by shrinkage toward the mean and does not yield a better decoded ECG. Isolated pairs show an action-driven change of morphology consistent with the transition, but in most pairs the prediction collapses onto the current state, $\text{Dec}(\hat{\vh}_{t+1})\approx\text{Dec}(\vh_t)$, and count-matched decoy actions move it as much as the true one.
+
+% Panels in the figures below: per pair, the top row shows the real median beats and the bottom row the decoded beats,
+% over the three leads where the beat changes most; the two rows share the y scale per lead. 
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{papel/fig/zero_test_morphology_01.png}
+\caption{The two highest-ranked of the 179 selected test pairs (Section~\ref{sec:decoder}). For each pair, the top row shows the real median beats of $\mX_t$ (grey) and $\mX_{t+1}$ (black), and the bottom row the decoded $\vh_{t+1}$ (green, the decoder's ceiling), the decoded $\vh_t$ (orange, do-nothing) and the decoded prediction $\text{Dec}(\hat{\vh}_{t+1}(\va_t))$ (blue, ``Dyn''), on the three leads where the beat changes most. Both rows share the y scale of each lead. Panel titles give the action, the correlation of each decoded beat with $\mB_{t+1}$ and $\mB_t$, and its squared error to $\mB_{t+1}$.}
+\label{fig:decoder-top}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{papel/fig/zero_test_morphology_middle_bottom.png}
+\caption{The middle-ranked (90) and last-ranked (179) of the 179 selected test pairs, as in Figure~\ref{fig:decoder-top}. The decoded $\vh_{t+1}$ reproduces the new morphology; the decoded prediction lies on the decoded $\vh_t$.}
+\label{fig:decoder-middle-bottom}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{papel/fig/decoy_test_morphology_01.png}
+\caption{The pairs of Figure~\ref{fig:decoder-top} with the decoded decoy prediction $\text{Dec}(\hat{\vh}_{t+1}(\tilde{\va}_t))$ (pink). The decoy has the true action's numbers of onsets and resolutions, on labels the true action leaves unchanged. The third title line gives the decoy's labels, its correlations with $\mB_{t+1}$ and $\mB_t$, and the correlation and relative size of its effect, $\text{Dec}(\hat{\vh}_{t+1}(\tilde{\va}_t))-\text{Dec}(\hat{\vh}_{t+1}(\vec 0))$, against the true action's.}
+\label{fig:decoder-decoy-1}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{papel/fig/decoy_test_morphology_02.png}
+\caption{Ranks 3 and 4 of the selected test pairs, with the decoy prediction as in Figure~\ref{fig:decoder-decoy-1}. In the third pair only the true action inverts the QRS complexes of aVR, V5 and V6; the decoy stays on the decoded $\vh_t$. The fourth pair admits no decoy: its action resolves the only label present at $t$.}
+\label{fig:decoder-decoy-2}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{papel/fig/decoy_test_morphology_middle_bottom.png}
+\caption{The middle- and last-ranked pairs of Figure~\ref{fig:decoder-middle-bottom}, with the decoy prediction. Neither the true action nor the decoy produces the new morphology. The last pair admits no decoy, since its action resolves every label present at $t$.}
+\label{fig:decoder-decoy-middle-bottom}
+\end{figure}
