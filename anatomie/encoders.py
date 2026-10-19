@@ -100,7 +100,7 @@ def load_encoder(spec: str, device: str = "cuda") -> ResNet1dLayers | ViT1dLayer
 def load_inverse_head(spec: str, device: str = "cuda") -> ActionPredictor | None:
     """The inverse head trained with the encoder (reads h), if the checkpoint has one: projector.pred in
     scripts/inverse_pretrain.py, projector.inv in scripts/joint_pretrain.py."""
-    if spec == "random":
+    if spec in ("random", "random-vit"):
         return None
     sd = _state_dict(spec)
     for prefix in ("projector.inv.", "projector.pred."):
@@ -121,7 +121,7 @@ def load_dynamics(spec: str, device: str = "cuda"):
                                        "displacement") predict h_{t+1} - h_t with the same layout
       projector.action                 the displacement g(a) alone, scripts/pretrain_displacement.py
     scripts/inverse_pretrain.py keeps its inverse head under projector.pred, with no projector.proj."""
-    if spec == "random":
+    if spec in ("random", "random-vit"):
         return None
     ckpt = torch.load(REPO / spec, map_location="cpu", weights_only=False)
     sd = ckpt["state_dict"]

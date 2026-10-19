@@ -397,3 +397,225 @@ $\text{Dyn}_\phi$ therefore moves the beat by about the same amount whatever lab
 \caption{The middle- and last-ranked pairs of Figure~\ref{fig:decoder-middle-bottom}, with the decoy prediction. Neither the true action nor the decoy produces the new morphology. The last pair admits no decoy, since its action resolves every label present at $t$.}
 \label{fig:decoder-decoy-middle-bottom}
 \end{figure}
+
+\subsection{Encoder Architecture: ResNet vs.\ ViT}
+\label{sec:cnn-vit}
+
+The planning analysis (Appendix~\ref{sec:cem-planning}) and the decoder (Appendix~\ref{sec:decoder}) show that $\text{Dyn}_\phi$ does not carry the effect of an action over to held-out transitions, although its training loss keeps falling. This section tests whether that failure is tied to the convolutional encoder. We replace $\text{Enc}_\theta$ with a small transformer and compare the two encoders on memorization of the training pairs, on the quality of their frozen features, and on planning.
+
+\paragraph{Setup.} The transformer is a 1D ViT:
+\begin{itemize}
+\item Non-overlapping 50\,ms patches (25 samples at 500\,Hz) feed 4 pre-norm blocks of width 128 with 4 attention heads, rotary position embeddings, QK-normalization and SwiGLU MLPs.
+\item Its tokens are mean-pooled and mapped linearly to $\vh_t\in\R^{256}$, as the ResNet's output layer does.
+\item It has $0.87$M parameters, against $3.98$M for the ResNet; its size matches the ResNet's layers before its last stage ($0.96$M).
+\end{itemize}
+
+The two \emph{matched} runs differ only in the encoder. Both train on the multistep cross-stay pool ($k\le12$, Appendix~\ref{sec:pairing-appendix}) with $\lambda=0.05$, weight decay $0.1$, learning rate $10^{-3}$, batch size 1{,}024 and a predictor of hidden width 512, for 100 epochs. Both are read at the final checkpoint, which no validation metric selected.
+
+Secondary runs are not matched to each other and serve to show trends:
+\begin{itemize}
+\item The matched ResNet run at its best validation loss (epoch 5).
+\item A ResNet trained on the multistep pool with $\lambda=0.005$ and weight decay $0.01$ (56 epochs).
+\item A ResNet trained on the $k=1$ cross-stay pairs with $\lambda=0.005$ and weight decay $0.01$ (100 epochs).
+\item The ViT trained on the $k=1$ cross-stay pairs with the matched recipe for 405 epochs, about as many batches as the multistep runs. It was run with predictor width 512 and with predictor width 128.
+\end{itemize}
+
+Randomly initialized ResNet and ViT encoders (seed 0) serve as controls.
+
+\paragraph{Memorization test.} We use membership inference, with members and non-members drawn the same way.
+\begin{itemize}
+\item \textbf{Anchors.} For each patient, one stay $s$ that has a second ECG and a following stay gives three ECGs: $\mX_A$, the first ECG of stay $s$; $\mX_{A'}$, its second ECG; and $\mX_B$, the first ECG of stay $s+1$. The pair $A\to B$ is a $k=1$ cross-stay pair; $\mX_{A'}$ belongs to no cross-stay pair.
+\item \textbf{Populations.} Members are 5{,}000 training patients and non-members all 2{,}518 patients of folds 18--19. Each patient contributes one anchor, so observations are independent.
+\item \textbf{Membership is verified per checkpoint.} Every member's $A\to B$ pair is in the checkpoint's own training pairs, and no $\mX_{A'}$ and no non-member pair is.
+\end{itemize}
+
+Each test assigns one score per patient and reports the AUROC separating members from non-members, with DeLong 95\% confidence intervals. Chance is $0.5$, and the random-init encoders, which have no members, measure the floor. Distances are taken relative to the mean distance to other patients' $\vh_B$ in the same population.
+\begin{itemize}
+\item \textbf{Pair:} closeness of $\vh_A$ to $\vh_B$. A high score means the recording and/or the patient is memorized.
+\item \textbf{Patient:} closeness of the never-trained $\vh_{A'}$ to $\vh_B$. A high score means the patient is memorized.
+\item \textbf{Recording:} the pair score relative to the patient score. A high score means the trained ECG sits closer to $\vh_B$ than an untrained ECG of the same stay, so the specific recording is memorized.
+\item \textbf{Action:} on pairs with $\va_t\neq\vec 0$, the share of the prediction error removed by the true action, $1-E(\va_t)/E(\vec 0)$, where $E(\va)=\lVert\text{Dyn}_\phi(\vh_A,\text{Proj}_\omega(\va))-\vh_B\rVert^2$. A high score means the action effects of the training transitions are memorized in $\text{Dyn}_\phi$.
+\end{itemize}
+
+\begin{table}[t]
+\caption{Membership inference (Appendix~\ref{sec:cnn-vit}): AUROC separating 5{,}000 training patients from 2{,}518 held-out patients, at the final embedding $\vh$ for the encoder tests and on $\text{Dyn}_\phi$ for the action test. Point estimates; DeLong 95\% half-widths are $0.007$--$0.017$. Chance is $0.5$; the random-init encoders measure the floor.}
+\label{tab:cnn-vit-memorization}
+\centering
+\begin{tabular}{@{}l r cccc@{}}
+\toprule
+\textbf{Encoder} & \textbf{Params} & \textbf{Pair} & \textbf{Patient} & \textbf{Recording} & \textbf{Action} \\
+\midrule
+ResNet, random init               & 3.98M & 0.513 & 0.511 & 0.499 & -- \\
+ViT, random init                  & 0.87M & 0.508 & 0.500 & 0.502 & -- \\
+\addlinespace
+ResNet (matched)                  & 3.98M & \textbf{0.930} & \textbf{0.741} & \textbf{0.868} & 0.633 \\
+ViT (matched)                     & 0.87M & 0.518 & 0.510 & 0.505 & 0.641 \\
+\addlinespace
+ResNet, epoch 5                   & 3.98M & 0.528 & 0.517 & 0.510 & 0.510 \\
+ResNet, $\lambda=0.005$           & 3.98M & 0.960 & 0.708 & 0.908 & 0.588 \\
+ResNet, $k=1$                     & 3.98M & 0.944 & 0.684 & 0.926 & 0.821 \\
+ViT, $k=1$, 405 epochs            & 0.87M & 0.518 & 0.512 & 0.503 & 0.832 \\
+ViT, $k=1$, predictor width 128   & 0.87M & 0.520 & 0.505 & 0.514 & 0.766 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Memorization results} (Table~\ref{tab:cnn-vit-memorization}).
+\begin{itemize}
+\item \textbf{The ResNet encoder memorizes its training recordings; the ViT encoder does not.}
+  \begin{itemize}
+  \item The pair test reaches $0.930$ $[0.924$--$0.935]$ for the matched ResNet, against $0.518$ $[0.504$--$0.532]$ for the matched ViT. Their controls score $0.513$ and $0.508$.
+  \item A trained ECG sits $7\times$ closer to the patient's next-stay ECG than a held-out patient's does (relative distance $0.046$ against $0.339$).
+  \item A trained ECG also sits closer than an untrained ECG of the same stay (recording test $0.868$).
+  \item The memorization is in the ResNet's last stage. Read at the pooled output of each stage, the pair test is at the control level up to stage 2, then $0.607$ at stage 3 and $0.924$ at stage 4.
+  \end{itemize}
+\item \textbf{The ResNet's memorization follows exposure.}
+  \begin{itemize}
+  \item On the multistep pool, the pair test rises from $0.867$ for ECGs in one training pair per epoch to $0.984$ for ECGs in $12.3$.
+  \item On $k=1$ pairs, where every ECG is in 1--2 pairs per epoch, it is flat at $0.94$--$0.96$ across patients.
+  \item It has not begun at epoch 5 ($0.528$).
+  \item By the last epoch, the ratio of training to validation forward loss is $0.05$ for the ResNet, against $0.66$ for the ViT.
+  \end{itemize}
+\item \textbf{The ViT encoder stays clean even under heavy repetition.}
+  \begin{itemize}
+  \item After 405 epochs on $k=1$ pairs, in which each training pair is seen 405 times, its pair test is $0.518$.
+  \item The only trace is in the most exposed patients of the multistep run, those with at least 9 stays: $0.566$ $[0.531$--$0.601]$.
+  \end{itemize}
+\item \textbf{The ViT's forward model memorizes instead.}
+  \begin{itemize}
+  \item The action test is $0.641$, as high as the ResNet's $0.633$. It reaches $0.832$ after 405 epochs on $k=1$ pairs, and a $3.8\times$ smaller predictor lowers it only to $0.766$.
+  \item Pooled over pairs, the true action explains $+0.114$ of the residual $\vh_B-\text{Dyn}_\phi(\vh_A,\text{Proj}_\omega(\vec 0))$ on training transitions and $-0.034$ on held-out ones.
+  \item The smaller encoder moves the memorization into $\text{Dyn}_\phi$; it does not remove it.
+  \end{itemize}
+\end{itemize}
+
+\paragraph{Linear probe.}
+\begin{itemize}
+\item \textbf{Probe.} A logistic regression for the 76 labels on standardized frozen features, fitted by full-batch L-BFGS. The L2 penalty is chosen per layer on the first-of-stay ECGs of fold 18, from $\{0, 10^{-6}, 10^{-5}, 10^{-4}, 10^{-3}\}$.
+\item \textbf{Data.} The probe trains on 100{,}000 first-of-stay ECGs of training patients and is tested on all 14{,}237 first-of-stay ECGs of fold 19, the triage test set of Section~\ref{sec:classification}, with the same bootstrap.
+\item \textbf{Readout layers.} We read $\vh$ and the pooled output of every stage: the ResNet's stem and four residual stages, and the ViT's patch embedding and four blocks.
+\item \textbf{Seen vs.\ unseen.} A second comparison tests whether labels reach the encoder through $\va_t$, which is built from them. The probe is scored on first-of-stay ECGs of 5{,}000 held-out training patients with at least two stays, all inside each checkpoint's training pairs, and on those of the fold-19 patients with at least two stays. The gap between the two has a patient-level bootstrap interval.
+\end{itemize}
+We include the Dynamics (Standard), Inverse Dynamics and Supervised encoders of the main text, all ResNets. Absolute values are specific to this offline protocol, under which every encoder is treated identically.
+
+\begin{table}[t]
+\caption{Linear probe on frozen features (Appendix~\ref{sec:cnn-vit}): macro-AUROC on the 14{,}237 fold-19 triage ECGs, bootstrap mean [95\% CI], at the final embedding $\vh$ and at the layer selected on validation. Seen $-$ unseen: probe AUROC on ECGs of training patients minus that on held-out patients, at $\vh$, with a patient-level bootstrap interval; the random-init encoders give its null range and the Supervised encoder a positive control.}
+\label{tab:cnn-vit-probe}
+\centering
+\resizebox{\textwidth}{!}{
+\begin{tabular}{@{}l c l c c@{}}
+\toprule
+\textbf{Encoder} & \textbf{At $\vh$} & \textbf{Best layer} & \textbf{At best layer} & \textbf{Seen $-$ unseen at $\vh$} \\
+\midrule
+ResNet, random init               & 0.677 \small{[0.665--0.689]} & stage 4 & 0.683 \small{[0.671--0.697]} & $-0.015$ \small{[$-0.037$, $+0.006$]} \\
+ViT, random init                  & 0.645 \small{[0.633--0.657]} & $\vh$   & 0.645 \small{[0.633--0.657]} & $+0.001$ \small{[$-0.021$, $+0.023$]} \\
+\addlinespace
+ResNet (matched)                  & 0.669 \small{[0.657--0.681]} & stage 2 & \textbf{0.710} \small{[0.699--0.720]} & $-0.024$ \small{[$-0.044$, $-0.002$]} \\
+ViT (matched)                     & 0.669 \small{[0.656--0.682]} & stage 3 & 0.681 \small{[0.668--0.694]} & $-0.013$ \small{[$-0.037$, $+0.011$]} \\
+\addlinespace
+ResNet, epoch 5                   & 0.672 \small{[0.661--0.683]} & stage 3 & 0.707 \small{[0.696--0.719]} & $-0.003$ \small{[$-0.025$, $+0.018$]} \\
+ResNet, $\lambda=0.005$           & 0.659 \small{[0.647--0.671]} & stage 3 & 0.732 \small{[0.721--0.742]} & $-0.014$ \small{[$-0.035$, $+0.009$]} \\
+ResNet, $k=1$                     & 0.677 \small{[0.665--0.689]} & stage 3 & 0.727 \small{[0.715--0.738]} & $-0.011$ \small{[$-0.034$, $+0.012$]} \\
+ViT, $k=1$, 405 epochs            & 0.658 \small{[0.643--0.673]} & stage 3 & 0.682 \small{[0.667--0.696]} & $-0.013$ \small{[$-0.039$, $+0.013$]} \\
+ViT, $k=1$, predictor width 128   & 0.665 \small{[0.653--0.677]} & stage 2 & 0.691 \small{[0.680--0.704]} & $+0.000$ \small{[$-0.024$, $+0.024$]} \\
+\addlinespace
+Dynamics (Standard)               & 0.692 \small{[0.682--0.704]} & stage 3 & 0.735 \small{[0.724--0.747]} & $-0.007$ \small{[$-0.027$, $+0.014$]} \\
+Inverse Dynamics                  & 0.716 \small{[0.703--0.729]} & stage 4 & 0.732 \small{[0.720--0.742]} & $-0.013$ \small{[$-0.036$, $+0.009$]} \\
+Supervised                        & 0.741 \small{[0.730--0.754]} & stage 4 & 0.745 \small{[0.734--0.757]} & $+0.021$ \small{[$+0.001$, $+0.041$]} \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\paragraph{Linear-probe results} (Table~\ref{tab:cnn-vit-probe}).
+\begin{itemize}
+\item \textbf{At $\vh$, the matched ResNet and ViT tie, and neither beats a random-init ResNet.} Both score $0.669$, against $0.677$ for the random-init ResNet. The ViT gains $+0.024$ over its own random initialization, but random ViT features start much lower ($0.645$): convolutions give a strong prior for ECGs even untrained.
+\item \textbf{The diagnostic information sits in the middle layers, and there the ResNet is better.} The matched ResNet reaches $0.710$ $[0.699$--$0.720]$ at stage 2, against $0.681$ $[0.668$--$0.694]$ for the ViT at stage 3. Forward pretraining improves on the best random-init layer by $+0.02$ to $+0.05$ for the ResNets ($0.707$--$0.735$ against $0.683$) and by about $+0.04$ for the ViTs.
+\item \textbf{The ResNet's last stage specializes to the forward loss; memorization is not the main cause.}
+  \begin{itemize}
+  \item From stage 3 to $\vh$, every forward-pretrained ResNet loses $0.04$--$0.07$.
+  \item The epoch-5 checkpoint, which has not memorized, loses as much ($0.707\to0.671$) as the matched one at epoch 99 ($0.713\to0.670$).
+  \item The most memorized ResNet ($\lambda=0.005$, pair test $0.960$) loses the most ($0.731\to0.659$), so memorization may add to the loss.
+  \item The Inverse Dynamics and Supervised encoders peak at stage 4 and do not show this drop.
+  \end{itemize}
+\item \textbf{There is no sign that labels leak into the encoder through the action.}
+  \begin{itemize}
+  \item Every forward-pretrained and inverse encoder has a seen $-$ unseen gap between $-0.024$ and $+0.000$, the range of the random-init controls ($-0.015$ and $+0.001$).
+  \item Only the Supervised encoder, which trained on these labels directly, probes better on ECGs it trained on ($+0.021$).
+  \end{itemize}
+\end{itemize}
+
+\paragraph{Planning test.} We read each checkpoint's own energy $E(\va)=\lVert\text{Dyn}_\phi(\vh_t,\text{Proj}_\omega(\va))-\vh_{t+1}\rVert^2$ on two sets of cross-stay pairs:
+\begin{itemize}
+\item the 8{,}062 test pairs of Appendix~\ref{sec:cem-planning} (fold 19);
+\item the 8{,}271 pairs of training fold 17, which are in every checkpoint's training pairs (verified).
+\end{itemize}
+The energy is read in three ways, all over admissible actions with the training base-rate priors of Appendix~\ref{sec:cem-planning}:
+\begin{itemize}
+\item \textbf{CEM.} Ranking by $E$ alone, with the search and soft readout of Appendix~\ref{sec:cem-planning}.
+\item \textbf{Decoys.} No search: the true action is ranked against two kinds of admissible decoy. \emph{Same-count} decoys are 16 actions with the true numbers of onsets and resolutions on random labels. The \emph{zero} decoy is the do-nothing action. The score is a within-pair AUROC, with chance at $0.5$.
+\item \textbf{Per-label readout.} $\delta_i=E(\vec 0)-E(\ve_i)$ for the single admissible flip $\ve_i$ of label $i$, and $p_i=\sigma(\text{logit}\,\pi_i+\delta_i/\tau)$, combined as in the contextualized score. The temperature $\tau$ is chosen on fold 18. This is the readout anticipated at the end of Appendix~\ref{sec:cem-planning}.
+\end{itemize}
+Each decoy and per-label score is repeated with $\vh_t$ as the target in place of $\vh_{t+1}$ (``nothing changed''). This keeps the patient and removes the change, so what survives is read from $\vh_t$, not from the outcome ECG. Intervals come from a patient-level bootstrap. On these pairs carry-forward scores $0.750$ and the Inverse Dynamics model $0.827$ (point estimates).
+
+\begin{table}[t]
+\caption{Planning with each forward checkpoint's own energy (Appendix~\ref{sec:cnn-vit}). Contextualized macro-AUROC on the 8{,}062 test pairs for CEM (soft readout, $E$ alone) and for the per-label readout, the latter also scored against $\vh_t$ (nothing changed). Within-pair AUROC of the true action against same-count decoys and against the zero action, on pairs with a change, for held-out (fold 19) / training (fold 17) pairs. Point estimates; patient-level 95\% half-widths are at most $0.028$ for the contextualized and $0.019$ for the within-pair scores. Carry-forward: $0.750$; Inverse Dynamics: $0.827$.}
+\label{tab:cnn-vit-planning}
+\centering
+\resizebox{\textwidth}{!}{
+\begin{tabular}{@{}l ccc cc@{}}
+\toprule
+& \multicolumn{3}{c}{\textbf{Contextualized, test}} & \multicolumn{2}{c}{\textbf{True action vs.\ decoys, held-out / training}} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-6}
+\textbf{Encoder} & \textbf{CEM} & \textbf{Per-label} & \textbf{Nothing changed} & \textbf{Same-count} & \textbf{Zero} \\
+\midrule
+ResNet (matched)                  & 0.470 & 0.772 & 0.751 & 0.524 / 0.722 & 0.516 / 0.583 \\
+ViT (matched)                     & 0.519 & 0.781 & 0.761 & 0.563 / 0.723 & 0.384 / 0.578 \\
+\addlinespace
+ResNet, epoch 5                   & 0.563 & \textbf{0.800} & 0.779 & 0.544 / 0.592 & 0.442 / 0.457 \\
+ResNet, $\lambda=0.005$           & 0.508 & 0.755 & 0.769 & 0.500 / 0.671 & 0.469 / 0.552 \\
+ResNet, $k=1$                     & 0.435 & 0.759 & 0.740 & 0.538 / 0.890 & 0.543 / 0.816 \\
+ViT, $k=1$, 405 epochs            & 0.542 & 0.769 & 0.761 & 0.561 / 0.849 & 0.346 / 0.763 \\
+ViT, $k=1$, predictor width 128   & 0.513 & 0.773 & 0.754 & 0.586 / 0.790 & 0.397 / 0.683 \\
+Dynamics (Standard)               & 0.517 & 0.790 & 0.782 & 0.550 / 0.672 & 0.491 / 0.557 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\paragraph{Planning results} (Table~\ref{tab:cnn-vit-planning}).
+\begin{itemize}
+\item \textbf{CEM fails with either encoder.}
+  \begin{itemize}
+  \item On test, the soft readout scores $0.470$ for the ResNet and $0.519$ for the ViT, and $0.435$--$0.563$ across all checkpoints, against $0.750$ for carry-forward.
+  \item Every search is exploited, with $4$--$12$ onsets per pair against $0.67$ in the ground truth.
+  \item Even on training pairs CEM stays below carry-forward. The best is the most memorized forward model, the $k=1$ ResNet, at $0.669$ against $0.743$.
+  \end{itemize}
+\item \textbf{On held-out pairs, the energy carries almost no evidence about the transition.}
+  \begin{itemize}
+  \item Against same-count decoys, the true action scores $0.524$ for the ResNet ($0.484$ when nothing changed) and $0.563$ for the ViT ($0.563$ when nothing changed). The ViT's higher score therefore comes from $\vh_t$ alone.
+  \item The ViTs' true action is \emph{worse} than doing nothing on held-out pairs ($0.346$--$0.397$): their action effects move the prediction away from $\vh_{t+1}$.
+  \end{itemize}
+\item \textbf{On training pairs, the energy carries strong evidence with either encoder.}
+  \begin{itemize}
+  \item Against same-count decoys, the two matched models score $0.722$ and $0.723$. After 100--405 epochs on $k=1$ pairs, the ResNet reaches $0.890$ and the ViT $0.849$.
+  \item Only the ResNet at epoch 5, before it memorizes, shows a small gap between training and held-out pairs ($0.592$ against $0.544$).
+  \item This is the action test of Table~\ref{tab:cnn-vit-memorization} seen by the planner: $\text{Dyn}_\phi$ memorizes the training transitions whichever encoder feeds it.
+  \end{itemize}
+\item \textbf{The per-label readout beats carry-forward, but mostly through $\vh_t$.}
+  \begin{itemize}
+  \item It scores $0.755$--$0.800$ on test, against $0.750$ for carry-forward.
+  \item Scored against $\vh_t$ alone, it already reaches $0.740$--$0.782$. The outcome ECG adds at most $0.021$, and the same for both architectures: $+0.020$ each, paired difference $+0.000$ $[-0.023, +0.026]$.
+  \item The validation AUROC is flat from about $3\times$ the spread of $\delta$ upward, which is the limit in which $E$ only breaks ties within each label's present and absent groups. Letting $E$ override the carry-forward ordering lowers it.
+  \item The best readouts come from the least memorized forward models, the ResNet at epoch 5 ($0.800$) and Dynamics (Standard) ($0.790$). Both remain below the Inverse Dynamics model ($0.827$).
+  \end{itemize}
+\end{itemize}
+
+\paragraph{Summary.}
+\begin{itemize}
+\item \textbf{Encoder memorization.} Replacing the ResNet with the 4.6$\times$ smaller ViT removes the encoder-level memorization: trained pairs no longer collapse, and the dependence on exposure disappears.
+\item \textbf{Forward-model memorization.} The swap does not make $\text{Dyn}_\phi$ generalize. The ViT's forward model memorizes the action effects of its training transitions as much as the ResNet's does.
+\item \textbf{Frozen features.} The ViT does not give better features: the two encoders tie at $\vh$, and the ViT's middle-layer ceiling is lower.
+\item \textbf{Planning.} Planning is unchanged. With either encoder, CEM is exploited, and the energy separates the true transition only on training pairs. A per-label readout gains about $0.02$ over carry-forward from the outcome ECG, the same for both. The planning failure lies in how the forward model generalizes, not in the encoder's collapse.
+\item \textbf{Caveats.} The comparison does not yet separate architecture from capacity, since a ResNet of about 1M parameters or a ViT of about 4M has not been trained. Each configuration has one seed.
+\end{itemize}
