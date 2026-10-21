@@ -619,3 +619,46 @@ Dynamics (Standard)               & 0.517 & 0.790 & 0.782 & 0.550 / 0.672 & 0.49
 \item \textbf{Planning.} Planning is unchanged. With either encoder, CEM is exploited, and the energy separates the true transition only on training pairs. A per-label readout gains about $0.02$ over carry-forward from the outcome ECG, the same for both. The planning failure lies in how the forward model generalizes, not in the encoder's collapse.
 \item \textbf{Caveats.} The comparison does not yet separate architecture from capacity, since a ResNet of about 1M parameters or a ViT of about 4M has not been trained. Each configuration has one seed.
 \end{itemize}
+
+\subsection{Pretraining Without Actions}
+\label{sec:no-actions}
+
+The forward objective conditions $\text{Dyn}_\phi$ on the transition $\va_t$, which is built from the labels. The preceding sections show that $\text{Dyn}_\phi$ does not carry the action's effect over to held-out pairs. This section asks whether the conditioning matters for the encoder at all. We retrain with every action set to $\vec 0$ and compare the finetuned encoders on MIMIC triage classification.
+
+\paragraph{Setup.} We set $\va_t=\vec 0$ for every pair, in training and in validation. Because $\text{Proj}_\omega$ is an MLP with biases, $\text{Proj}_\omega(\vec 0)$ becomes a learned constant that the first layer of $\text{Dyn}_\phi$ absorbs as a bias. The model is therefore $\hat\vh_{t+1}=\text{Dyn}_\phi(\vh_t)$, with the same encoder, predictor capacity, SIGReg term and optimizer, and the first layer of $\text{Proj}_\omega$ receives no gradient. The objective no longer uses labels: it predicts the embedding of the patient's next stay from the current one. On the $k=1$ cross-stay pairs used here, this removes the action from the $51.7\%$ of training pairs that carry one, which change $2.48$ labels on average (Table~\ref{tab:pairing-stats}). On the pooled within- and cross-stay pairs of Dynamics (Standard), only $25.0\%$ of pairs would be affected, since within-stay pairs are almost all stable.
+
+Both runs use the ViT encoder of Appendix~\ref{sec:cnn-vit} with its $k=1$ recipe: cross-stay pairs, $\lambda=0.05$, weight decay $0.1$, learning rate $10^{-3}$, batch size 1{,}024, predictor width 512, seed 42 and 405 epochs. They differ only in $\va_t$. The action-conditioned run is the ``ViT, $k=1$, 405 epochs'' run of Appendix~\ref{sec:cnn-vit}, and we also include its predictor-width-128 variant as a second action-conditioned run. Each run is read at its highest online linear-probe AUROC on validation, which falls at epoch 370 without actions and at epochs 402 and 403 with them.
+
+Each encoder is then finetuned end to end with a linear head for the 76 labels on the 261{,}496 first-of-stay ECGs of the training folds, with learning rate $10^{-4}$, weight decay $10^{-2}$ and batch size 1{,}024. Training stops early on the loss over the 14{,}456 first-of-stay ECGs of fold 18 (patience 20), and we keep the checkpoint with the lowest loss (epochs 39, 57 and 57). The test set is the 14{,}237 first-of-stay ECGs of fold 19, scored as in Table~\ref{tab:classification}: macro-AUROC is the mean over 1{,}000 bootstrap resamples, reported with a 95\% interval.
+
+Two quantities logged on the 8{,}244 validation pairs during pretraining complement the test. The \emph{error ratio} is the prediction error $\lVert\hat\vh_{t+1}-\vh_{t+1}\rVert^2$ relative to that of doing nothing, $\lVert\vh_t-\vh_{t+1}\rVert^2$, averaged over pairs. The prediction uses $\va=\vec 0$ without actions and the true $\va_t$ with them, and each model is measured in its own embedding space. The \emph{true vs.\ zero} score is the within-pair AUROC of Appendix~\ref{sec:cnn-vit} of the true action against the zero action, on pairs with a change, under the action-conditioned model's own energy $E$. Chance is $0.5$, and a score below it means the zero action predicts $\vh_{t+1}$ better than the true one.
+
+\begin{table}[t]
+\caption{Pretraining with and without actions (Appendix~\ref{sec:no-actions}). The three ViT encoders (0.87M parameters) are trained on $k=1$ cross-stay pairs and differ in $\va_t$ and predictor width. Pretraining columns are measured on the 8{,}244 validation pairs at the selected checkpoint. Error ratio: prediction error relative to doing nothing. True vs.\ zero: within-pair AUROC of the true action against the zero action on pairs with a change; chance is $0.5$. Test: finetuned macro-AUROC on the 14{,}237 fold-19 triage ECGs, bootstrap mean [95\% CI]. The last two rows are from Table~\ref{tab:classification}. They use a ResNet and other pretraining recipes, and were finetuned on all 721{,}002 training ECGs rather than the 261{,}496 first-of-stay ones, so they are not matched to the ViT rows.}
+\label{tab:no-actions}
+\centering
+\resizebox{\textwidth}{!}{
+\begin{tabular}{@{}l ccc c@{}}
+\toprule
+& \multicolumn{3}{c}{\textbf{Pretraining, validation}} & \\
+\cmidrule(lr){2-4}
+\textbf{Encoder} & \textbf{Probe AUROC} & \textbf{Error ratio} & \textbf{True vs.\ zero} & \textbf{Test macro-AUROC (finetuned)} \\
+\midrule
+ViT, no actions                    & 0.633 & \textbf{0.941} & --    & 0.7391 \small{[0.7266 -- 0.7529]} \\
+ViT, actions (matched)             & 0.620 & 0.992          & 0.358 & 0.7409 \small{[0.7273 -- 0.7557]} \\
+ViT, actions, predictor width 128  & 0.642 & 0.957          & 0.376 & 0.7441 \small{[0.7314 -- 0.7575]} \\
+\addlinespace
+Dynamics (Standard), ResNet        & --    & --             & --    & 0.7500 \small{[0.7395 -- 0.7597]} \\
+Inverse Dynamics, ResNet           & --    & --             & --    & 0.7373 \small{[0.7252 -- 0.7510]} \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\paragraph{Results.} Removing the actions leaves finetuned classification unchanged (Table~\ref{tab:no-actions}). The encoder pretrained without actions scores $0.7391$ $[0.7266$--$0.7529]$, against $0.7409$ $[0.7273$--$0.7557]$ for the matched action-conditioned encoder. The gap of $0.0018$ is about an eighth of either interval's half-width, and the three ViT encoders together span only $0.005$, inside every interval.
+
+The action does not improve prediction on held-out pairs either. Within each action-conditioned model, the zero action predicts $\vh_{t+1}$ better than the true action on most validation pairs with a change, with within-pair AUROCs of $0.358$ and $0.376$. Across models, the action-free one has the lowest error ratio, $0.941$ against $0.992$ for the matched action-conditioned model. This agrees with Appendix~\ref{sec:cnn-vit}, where $\text{Dyn}_\phi$ fits the action effects of its training transitions but these effects do not hold on held-out ones. Nor does the online probe favor the actions: it reads $0.633$ without them and $0.620$ with them, while the predictor-width-128 run reads $0.642$. Its ordering therefore does not follow the conditioning, and it also differs from the finetuned ordering.
+
+The ResNet rows of Table~\ref{tab:no-actions} serve only as orientation. All three ViT encoders fall below Dynamics (Standard) ($0.7500$) and above Inverse Dynamics ($0.7373$), but those two use a ResNet with other pair sets and other $\lambda$. They were also finetuned on all training ECGs, including the 298{,}869 recorded outside any stay, whose labels are all negative. Only the ViT rows compare matched runs.
+
+\paragraph{Summary.} With the ViT encoder on $k=1$ cross-stay pairs, conditioning on the diagnosis transition brings no measurable benefit to the encoder. A label-free predictor of the next stay's embedding gives the same finetuned triage AUROC and, on held-out pairs, predicts its next-stay embedding at least as well. Whatever the forward objective contributes to the encoder therefore comes from predicting the patient's next ECG, not from the labels in $\va_t$. Three caveats apply. Each configuration has one seed and the intervals are per model, so a paired bootstrap on shared test resamples and more seeds would bound the effect more tightly. The ResNet recipe of Dynamics (Standard), in which only $25.0\%$ of training pairs carry an action, has not been ablated. Finally, labels still select the pretraining checkpoint through the online probe, in both arms alike.

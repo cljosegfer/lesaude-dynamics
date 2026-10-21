@@ -2,7 +2,8 @@
 Test-set Bootstrap Evaluation
 ==============================
 Loads a supervised checkpoint and reports macro AUROC with 95% bootstrap CI
-on the held-out test fold.
+on the held-out test fold. The encoder (resnet1d or vit1d) is rebuilt from the
+checkpoint's hparams.
 
 Example
 -------
@@ -23,7 +24,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from dataset.dataset import MIMICLanceDataset
-from models.resnet1d import ResNet1d
+from models.backbones import build_backbone
 
 
 def _load_model(ckpt_path: str, embedding_dim: int, device: torch.device):
@@ -31,7 +32,8 @@ def _load_model(ckpt_path: str, embedding_dim: int, device: torch.device):
     
     sd = ckpt["state_dict"]
 
-    backbone = ResNet1d(in_channels=12, embedding_dim=embedding_dim)
+    # resnet1d when the hparams predate the backbone key, else what they name (vit1d with its vit: sizes)
+    backbone = build_backbone({"embedding_dim": embedding_dim, **(ckpt.get("hyper_parameters") or {})})
     backbone.load_state_dict(
         {k[len("backbone."):]: v for k, v in sd.items() if k.startswith("backbone.")}
     )

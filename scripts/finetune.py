@@ -3,6 +3,7 @@ Fine-tuning / Linear Probing after Dynamics Pre-training
 =========================================================
 Loads the encoder checkpoint produced by pretrain.py and fine-tunes it for
 multi-label ICD-10 classification, replicating the Table 1 downstream results.
+The encoder (resnet1d or vit1d) is rebuilt from the checkpoint's hparams.
 
   freeze_encoder=false  → full fine-tune  ("Finetuned"    rows in Table 1)
   freeze_encoder=true   → linear probe    ("Linear Probe" rows in Table 1)
@@ -27,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import hydra
 from hydra.utils import get_original_cwd
+from omegaconf import open_dict
 import torch
 import torch.nn.functional as F
 import lightning as pl
@@ -38,7 +40,7 @@ import torchmetrics
 import stable_pretraining as spt
 
 from dataset.dataset import MIMICLanceDataset
-from models.resnet1d import ResNet1d
+from models.backbones import build_backbone
 from utils import check_tcp
 
 
@@ -71,12 +73,21 @@ def main(cfg):
     val_loader   = _make_loader(val_ds,   cfg.batch_size, num_workers, shuffle=False)
     data_module  = spt.data.DataModule(train=train_loader, val=val_loader)
 
-    backbone = ResNet1d(in_channels=12, embedding_dim=cfg.embedding_dim)
+    # The checkpoint's hparams name its encoder (resnet1d when they predate the key, or vit1d with its vit:
+    # sizes). Copying them into cfg rebuilds that encoder and records it in the finetuned checkpoint's hparams.
+    pretrained_ckpt = Path(get_original_cwd()) / cfg.pretrained_ckpt
+    state = torch.load(pretrained_ckpt, map_location="cpu", weights_only=False) if pretrained_ckpt.exists() else None
+    if state is not None:
+        hp = state.get("hyper_parameters") or {}
+        with open_dict(cfg):
+            cfg.backbone = hp.get("backbone", "resnet1d")
+            if cfg.backbone == "vit1d":
+                cfg.vit = hp["vit"]
+
+    backbone = build_backbone(cfg)
 
     # Load pretrained encoder weights
-    pretrained_ckpt = Path(get_original_cwd()) / cfg.pretrained_ckpt
-    if pretrained_ckpt.exists():
-        state = torch.load(pretrained_ckpt, map_location="cpu", weights_only=False)
+    if state is not None:
         backbone_state = {
             k.removeprefix("backbone."): v
             for k, v in state["state_dict"].items()
@@ -85,7 +96,7 @@ def main(cfg):
         missing, unexpected = backbone.load_state_dict(backbone_state, strict=True)
         if missing or unexpected:
             raise RuntimeError(f"Checkpoint mismatch — missing: {missing}, unexpected: {unexpected}")
-        print(f"Loaded pretrained encoder from {pretrained_ckpt}")
+        print(f"Loaded pretrained {cfg.backbone} encoder from {pretrained_ckpt}")
     else:
         print(f"WARNING: pretrained_ckpt not found at {pretrained_ckpt} — training from scratch")
 
@@ -171,6 +182,12 @@ def main(cfg):
     )
 
     spt.set(cache_dir=cfg.spt_runs_dir)
+
+    # Manager restores a wandb run id from a `wandb_resume.json` sidecar
+    # left in the CWD by the previous invocation (legacy fallback, used
+    # even when cache_dir is active). Every run here is fresh, so clear it
+    # rather than silently reattach to another job's wandb run.
+    (Path(get_original_cwd()) / "wandb_resume.json").unlink(missing_ok=True)
 
     manager = spt.Manager(
         trainer=trainer,

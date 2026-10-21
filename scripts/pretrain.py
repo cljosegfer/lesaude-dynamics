@@ -28,6 +28,13 @@ ViT encoder (see configs/pretrain.yaml for sizes, memory and speed)
 python scripts/pretrain.py ++backbone=vit1d ++vit.depth=4 ++vit.dim=128 \\
     ++ckpt_path=checkpoints/pretrain_vit_.ckpt ++ckpt_path_auroc=checkpoints/pretrain_vit_auroc_.ckpt
 
+Ablation without actions
+------------------------
+use_actions=false zeros at for every pair, so Dynϕ predicts ht+1 from ht alone; the decoy probe then logs only
+eval/mse_ratio. Give the run its own checkpoint names:
+python scripts/pretrain.py ++use_actions=false \\
+    ++ckpt_path=checkpoints/pretrain_noact_.ckpt ++ckpt_path_auroc=checkpoints/pretrain_noact_auroc_.ckpt
+
 Resuming an interrupted run
 ----------------------------
 python scripts/pretrain.py \\
@@ -112,15 +119,21 @@ class _DecoyProbe(pl.Callback):
     as well there ranks from ht alone, not from evidence in the outcome (anatomie/decoy_objectives.py's "none").
 
       eval/mse_ratio     E(truth) / mean ||ht1 - ht||^2: val prediction error relative to doing nothing, unlike
-                         val/pred_loss comparable across backbones and λ (embedding scales differ)"""
+                         val/pred_loss comparable across backbones and λ (embedding scales differ)
+
+    With use_actions false (the ablation without actions) there is no action to rank, and Projω's first layer never
+    trains, so decoys would only measure its random weights: only eval/mse_ratio is logged, with the truth scored at
+    a = 0, the one action Dynϕ was trained on."""
 
     FAMILIES = ("same", "extra", "zero", "prior")
 
-    def __init__(self, n_decoys: int, prior_ons: torch.Tensor, prior_res: torch.Tensor, seed: int):
-        self._k     = n_decoys
-        self._prior = (prior_ons, prior_res)
-        self._seed  = seed
-        names = [f"eval/decoy_{f}{s}" for f in self.FAMILIES for s in ("", "_nochange")]
+    def __init__(self, n_decoys: int, prior_ons: torch.Tensor, prior_res: torch.Tensor, seed: int,
+                 use_actions: bool = True):
+        self._k       = n_decoys
+        self._prior   = (prior_ons, prior_res)
+        self._seed    = seed
+        self._actions = use_actions
+        names = [f"eval/decoy_{f}{s}" for f in self.FAMILIES for s in ("", "_nochange")] if use_actions else []
         self._metrics = {n: torchmetrics.MeanMetric() for n in names + ["e_true", "e_nothing"]}
 
     def on_validation_epoch_start(self, trainer, pl_module):
@@ -153,6 +166,12 @@ class _DecoyProbe(pl.Callback):
             return
         yt, at  = batch["yt"].float(), batch["at"].float()
         ht, ht1 = outputs["embedding"].float(), outputs["ht1"].float()
+        if not self._actions:
+            with torch.autocast(device_type=ht.device.type, enabled=False):
+                pred = pl_module.projector["pred"](ht, pl_module.projector["proj"](torch.zeros_like(at)))
+            self._metrics["e_true"].to(ht.device).update((pred - ht1).pow(2).mean(-1))
+            self._metrics["e_nothing"].to(ht.device).update((ht1 - ht).pow(2).mean(-1))
+            return
         cand    = self._candidates(yt, at)                          # (B, N, C)
         B, N, C = cand.shape
         K       = self._k
@@ -251,6 +270,9 @@ def main(cfg):
 
         # Both train and val use pair batches: {"xt", "xt1", "yt", "at"}
         xt, xt1, yt, at = batch["xt"], batch["xt1"], batch["yt"], batch["at"]
+        if not cfg.use_actions:
+            # Ablation without actions: Projω(0) is a learned constant, so ht1_hat depends on ht alone
+            at = torch.zeros_like(at)
 
         ht      = self.backbone(xt)                          # (B, D)
         ht1     = self.backbone(xt1)                         # (B, D)
@@ -302,7 +324,8 @@ def main(cfg):
     callbacks = [auroc_probe]
     if cfg.decoy_probe_decoys > 0:
         prior_ons, prior_res = _transition_priors(cfg.lance_path, cfg.pairs_path, pair_types, cfg.action_dim)
-        callbacks.append(_DecoyProbe(cfg.decoy_probe_decoys, prior_ons, prior_res, seed=cfg.seed))
+        callbacks.append(_DecoyProbe(cfg.decoy_probe_decoys, prior_ons, prior_res, seed=cfg.seed,
+                                     use_actions=cfg.use_actions))
     if cfg.use_wandb:
         if check_tcp():
             logger = WandbLogger(project=cfg.wandb_project)

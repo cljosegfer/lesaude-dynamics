@@ -26,7 +26,10 @@ vit:
   mlp_ratio: 4.0
   grad_checkpoint: false
 action_dim: 76
-predictor_hidden_dim: 64
+# false = ablation without actions: at is zeroed for every pair, so Dynϕ predicts ht+1 from ht alone (Projω(0) is
+# a learned constant) and pretraining is label-free. The decoy probe then logs only eval/mse_ratio, scored at a = 0.
+use_actions: false
+predictor_hidden_dim: 512
 # Decoys per family (same-count, extra-flip, prior) scored per val pair by the decoy probe (eval/decoy_*); 0 = off
 decoy_probe_decoys: 16
 # SIGReg weight λ — tune so pred_loss and reg_loss have a ~1:1 to 1:3 gradient magnitude ratio
@@ -45,11 +48,11 @@ seed: 42
 
 wandb_project: lesaude-pretrain
 use_wandb: true
-ckpt_path: checkpoints/pretrain_vit_.ckpt
+ckpt_path: checkpoints/pretrain_zeroactions.ckpt
 # Best-by-downstream-AUROC checkpoint, saved alongside the best-by-val/loss one
 # above. Same weights-only ModelCheckpoint mechanism, monitoring
 # eval/auroc__MultilabelAUROC_epoch (mode=max) instead.
-ckpt_path_auroc: checkpoints/pretrain_vit_auroc_.ckpt
+ckpt_path_auroc: checkpoints/pretrain_zeroactions_auroc.ckpt
 
 # Manual resume: path to a `last.ckpt` from an interrupted run's run_dir
 # (e.g. runs/runs/<date>/<time>/<run_id>/checkpoints/last.ckpt). Relative

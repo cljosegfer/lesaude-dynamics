@@ -145,6 +145,12 @@ def main(cfg):
     # spt.set(cache_dir=None)
     spt.set(cache_dir=cfg.spt_runs_dir)
 
+    # Manager restores a wandb run id from a `wandb_resume.json` sidecar
+    # left in the CWD by the previous invocation (legacy fallback, used
+    # even when cache_dir is active). Every run here is fresh, so clear it
+    # rather than silently reattach to another job's wandb run.
+    (Path(get_original_cwd()) / "wandb_resume.json").unlink(missing_ok=True)
+
     manager = spt.Manager(
         trainer=trainer,
         module=module,
