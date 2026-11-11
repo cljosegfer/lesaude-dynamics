@@ -10,6 +10,14 @@ def _rope(n_tokens: int, head_dim: int, base: float, device) -> tuple[torch.Tens
     return freqs.cos(), freqs.sin()                      # (T, head_dim/2) each
 
 
+def _rope_at(positions: torch.Tensor, head_dim: int, base: float) -> tuple[torch.Tensor, torch.Tensor]:
+    """RoPE tables at explicit token positions (B, K), shaped (B, 1, K, head_dim/2) to broadcast over heads; equal
+    to _rope's rows at those positions."""
+    inv_freq = 1.0 / (base ** (torch.arange(0, head_dim, 2, device=positions.device, dtype=torch.float32) / head_dim))
+    freqs = positions.float().unsqueeze(-1) * inv_freq
+    return freqs.cos().unsqueeze(1), freqs.sin().unsqueeze(1)
+
+
 def _apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
     """Rotate-half RoPE on fp32 (B, H, T, head_dim)."""
     x1, x2 = x.chunk(2, dim=-1)
@@ -123,6 +131,22 @@ class ViT1d(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         *_, x = self._tokens(x)
         return self.fc(self.norm(x).mean(dim=1))
+
+    def forward_kept(self, x: torch.Tensor, keep: torch.Tensor) -> torch.Tensor:
+        """Embedding of only the patches `keep` (B, K, patch indices) of each input, I-JEPA style: the other patches
+        are dropped, not zero-filled, and the kept ones keep their own RoPE positions. Patches are embedded
+        independently (kernel = stride), so gathering after the patch embedding equals embedding only those patches.
+        With keep = arange(T) for every row it equals forward(x)."""
+        t = self.patch_embed(x).transpose(1, 2)                                   # (B, T, dim)
+        t = torch.gather(t, 1, keep.unsqueeze(-1).expand(-1, -1, t.shape[-1]))   # (B, K, dim)
+        cos, sin = _rope_at(keep, self.blocks[0].attn.qkv.in_features // self.blocks[0].attn.num_heads,
+                            self.rope_base)
+        for block in self.blocks:
+            if self.grad_checkpoint and self.training:
+                t = checkpoint(block, t, cos, sin, use_reentrant=False)
+            else:
+                t = block(t, cos, sin)
+        return self.fc(self.norm(t).mean(dim=1))
 
     def layer_features(self, x: torch.Tensor) -> dict:
         """Mean-pooled tokens after the patch embedding and after every block, plus h, for diagnostics."""

@@ -1,0 +1,17 @@
+% =============================================================================
+% Appendix: encoder objectives without cross-visit pairing
+% (\label{sec:wm-app-encoder}). Prose only, no data statistics; the numbers are
+% reported with the experiments. Meant to be included with
+% \input{method_appendix_encoder} in the appendix of the main file.
+% =============================================================================
+
+\section{Encoder objectives without cross-visit pairing}
+\label{sec:wm-app-encoder}
+
+The encoder requirement of \S\ref{sec:wm-setting} excludes objectives that treat a patient's recordings as positives for invariance, but it leaves open which of the admissible objectives to use. To test whether pairing recordings across visits is needed at all, we trained, with the architecture, data, optimizer, schedule and predictor of the cross-visit predictive encoder, two encoders whose objectives never pair two recordings. The first predicts the representation of one augmented view of a recording from another view of the same recording, with mild augmentations that leave amplitude and heart rate essentially unchanged. The second predicts the pooled representation of a contiguous segment of a recording from the remaining segments of that recording, with a gap between them that neither encoder pass sees, the tokens outside each pass being dropped rather than zero-filled.
+
+Both encoders were checked, before any comparison of effect norms, with diagnostics that are independent of the grounding test. These are a frozen linear probe of the stay-level diagnoses, retrieval of a recording from a second view of itself, retrieval of a patient's other recording from one recording, the effective rank of the representation, and the ratio between the distance of a pair's two recordings when their codes change and when they do not. A candidate entered the comparison only if its probe came within a fixed tolerance of the cross-visit reference, a rule fixed before the diagnostics reported here were computed.
+
+Neither encoder passed. Both identified individual recordings almost perfectly but recognized the same patient across recordings far less often than the cross-visit encoder, and neither moved more between a patient's recordings when the codes changed than when they did not. The view-based encoder also lost diagnostic content as training progressed while its prediction loss kept falling, which points to a shortcut through detail specific to the recording: the views of one recording share that detail, so predicting one from the other does not require any structure that the patient's other recordings share. The segment-based encoder avoided the loss of diagnostic content but not the shortcut. When the positive-control effects were measured in the representation, the segment-based encoder carried almost none of them, and its concatenation with the fixed signal features performed like the fixed features alone.
+
+We read these results as an observation about our data and training budget, not as a property of objectives without cross-visit pairing in general. They do suggest that, for representations meant to carry within-patient change, pairing across visits through a predictor, which the requirement permits, is more informative than pairing within a recording, and that the requirement should be stated in terms of invariance rather than of pairing.

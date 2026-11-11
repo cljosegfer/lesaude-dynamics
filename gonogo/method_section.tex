@@ -1,0 +1,357 @@
+% =============================================================================
+% Method section: world models from weak, confounded, and partially grounded
+% action labels.
+%
+% Meant to be included with \input{method_section} from an existing main file.
+% Assumes the main preamble loads amsmath, amssymb and natbib (\citep/\citet).
+% Theorem-like environments are created below only if the main file does not
+% already define them. New references are in method_refs.bib; add it to your
+% \bibliography{...} list (remove duplicates of keys you already have).
+% All labels are namespaced (sec:wm*, eq:wm-*, prop:wm-*, ass:wm-*) so they
+% cannot collide with labels already defined in the main file.
+%
+% Revision (22 Oct 2026), following go_no_go_plan.md, Section 7: labels may
+% depend on the context (recording route); centering over label values removed;
+% grounding statistics computed from unpenalized refits, apart from selection;
+% anchors fixed in advance, in disjoint roles, with a separation requirement;
+% mediation through co-recorded codes noted; theory positioned as standard
+% results; context estimate indexed as u-hat_{t+1}; rollout evaluation defined.
+%
+% Revision (27 Oct 2026), following the Phase 0 results of go_no_go_plan.md
+% (revision 5): the anchor set is the full set of no-route codes under a
+% documented rule (appendix label sec:wm-app-anchors, to be created); label
+% provenance is a confounder that the label vector reveals, and pairs labelled
+% from one document are excluded; non-differential recording holds given the
+% observed encounter covariates z; static covariates (age, sex) enter the drift
+% term and the context estimator; over-adjustment by co-recorded codes is
+% discussed; the proximal extension is optional; Gamma-hat is a rotation
+% estimate over held-out no-route codes; the encoder must not be trained with
+% same-patient positives. New references: kiyasseh2021clocs, diamant2022pclr,
+% schisterman2009overadjustment (method_refs.bib).
+%
+% Revision (3 Nov 2026), following go_no_go_plan.md revision 6: Gamma-hat is a
+% random-effects (DerSimonian-Laird) estimate over the withheld no-route codes,
+% and prop:wm-sensitivity says what a quantile-based margin protects; the
+% over-adjustment paragraph no longer claims that conditioning on a_{t,-c}
+% cannot create grounding (mediators attenuate, colliders can create; the
+% single-change estimate is the collider check; superseded on 3 Nov, below), and Delta_c holds the other
+% events fixed; z_t is in S_t, and the observation model and the recording
+% assumption both depend on (z_t, anchor labels) only; the encoder is chosen on
+% one half of the patients and the positive controls are reported on the other;
+% li2026dueling TODO removed (claims verified); TODO added on "largely
+% unrecorded"; the anchor appendix is method_appendix_anchors.tex. New
+% reference: dersimonian1986meta (method_refs.bib).
+%
+% Revision (3 Nov 2026, second), following go_no_go_plan.md revision 7: only
+% representations whose learned part satisfies the encoder requirement are
+% candidates (an encoder with same-patient positives is a reference only); the
+% collider check repeats each decision without the other non-anchor labels,
+% keeping z_t and the anchor labels, and the single-change estimate is only a
+% descriptive sensitivity analysis; the anchor rule is frozen before the
+% pre-specified analyses, and its form was informed by exploratory analyses of
+% the same data (definition of C_0, roles paragraph, Scope); the observation
+% model of sec:wm-weak is a display (eq:wm-obsmodel) and the posterior is split
+% over three lines, to avoid overfull lines.
+%
+% Revision (9 Nov 2026), following go_no_go_plan.md revision 8: Sigma is
+% estimated with Ledoit-Wolf shrinkage of the standardized stable-pair changes
+% (no tuning parameter), per representation and on the patients of the
+% statistic; the truncated pseudo-inverse and the full inverse are reported as
+% sensitivity analyses; prop:wm-sensitivity and the Gamma-hat paragraph use the
+% same estimate. New reference: ledoit2004wellconditioned (method_refs.bib,
+% marked for verification).
+%
+% Revision (10 Nov 2026), following go_no_go_plan.md revision 9: the encoder
+% requirement is narrowed to objectives that treat a patient's recordings as
+% positives for invariance (contrastive); predictive cross-visit objectives are
+% not excluded; one sentence reports, as an empirical observation, that
+% objectives without cross-visit pairing learned recording-specific detail
+% (details in method_appendix_encoder.tex, sec:wm-app-encoder); the z_t
+% sentence says we do not rely on the anchors as proxies of the acute context.
+% =============================================================================
+
+\makeatletter
+\@ifundefined{assumption}{\newtheorem{assumption}{Assumption}}{}
+\@ifundefined{proposition}{\newtheorem{proposition}{Proposition}}{}
+\makeatother
+
+\section{World Models from Weak, Confounded, and Partially Grounded Action Labels}
+\label{sec:wm}
+
+In longitudinal clinical data, the natural candidate for an action is the change in diagnostic codes between consecutive recordings, $\mathbf{a}_t=\mathbf{y}_{t+1}-\mathbf{y}_t$. This choice breaks three assumptions that action-conditioned world models take for granted. The label is not chosen before the transition but recorded after it, and it is subject to omission, delay, and error, which makes it \emph{weak}. Many codes describe conditions without an electrophysiological signature, so their onset leaves the observation unchanged and the label set is only \emph{partially grounded}. Finally, codes are assigned within a clinical context, such as an admission or an acute illness, that also changes the signal, so the labels are \emph{confounded}. The context acts through two routes: it changes which conditions occur, and it changes which conditions are recorded, since an inpatient admission documents more comorbidities than a visit to the emergency department. It is the combination of these properties that makes the problem hard: confounding makes ungrounded codes predictive of the transition, so any criterion that deems a code relevant because it improves prediction fails precisely on those codes.
+
+We formalize the setting in \S\ref{sec:wm-setting} and show in \S\ref{sec:wm-failure} why prediction-based criteria fail in it. We then introduce a factorized world model (\S\ref{sec:wm-model}) whose per-code effects are estimated after deconfounding with negative-control codes (\S\ref{sec:wm-deconf}), tested for grounding with statistics computed apart from model selection (\S\ref{sec:wm-test}), and refined under label noise (\S\ref{sec:wm-weak}). Section~\ref{sec:wm-training} describes the training procedure, and \S\ref{sec:wm-theory} the assumptions on which each step rests. The propositions there are standard results of causal inference, namely omitted-variable bias, backdoor adjustment under exposure misclassification, proximal identification, and a margin argument, specialized to this setting. Their role is to make explicit which assumption each step needs and which of these the held-out anchors can test. The contribution lies in the formalization of the setting for world models and in a grounding test calibrated by negative-control codes, which reports the codes about which the data cannot speak instead of forcing them into either class. Propositions are stated informally; precise statements and proofs are deferred to the appendix.
+
+% -----------------------------------------------------------------------------
+\subsection{Problem setting}
+\label{sec:wm-setting}
+
+For each patient we observe a sequence of 12-lead recordings $\mathbf{X}_t\in\mathbb{R}^{12\times T}$ acquired at irregular times, binary diagnostic labels $\mathbf{y}_t\in\{0,1\}^{C}$, and the elapsed time $\tau_t$ between recordings $t$ and $t+1$. Labels are assigned once per clinical encounter, so a change can only be recorded between recordings of different encounters. We therefore pair recordings of consecutive encounters, and treat the labels of recordings made outside any encounter as missing rather than negative. We posit the generative process
+\begin{align}
+\mathbf{X}_t &= R(\mathbf{p},\mathbf{s}_t,\mathbf{u}_t,\boldsymbol{\epsilon}_t), \label{eq:wm-obs}\\
+\mathbf{s}_{t+1} &= \mathbf{s}_t + D(\mathbf{s}_t,\tau_t) + \sum_{c=1}^{C} e_{t,c}\,\boldsymbol{\delta}_c(\mathbf{s}_t,\mathbf{p}) + \boldsymbol{\xi}_t, \label{eq:wm-state}\\
+\mathbf{u}_{t+1} &\sim P(\,\cdot\mid\mathbf{u}_t,\tau_t), \qquad e_{t,c}\sim P(\,\cdot\mid\mathbf{p},\mathbf{s}_t,\mathbf{u}_{t+1}), \label{eq:wm-events}\\
+a_{t,c} &\sim P(\,\cdot\mid e_{t,c},e_{t-1,c},\mathbf{u}_{t+1}). \label{eq:wm-labels}
+\end{align}
+Here $\mathbf{p}$ is a time-invariant patient substrate, $\mathbf{s}_t$ the electrophysiological state of the heart, and $\mathbf{u}_t$ an unobserved clinical context, such as acute illness or hospital admission. The variable $e_{t,c}\in\{-1,0,1\}$ is the true onset or resolution of condition $c$ between $t$ and $t+1$, and $a_{t,c}$ is its recorded counterpart. Its dependence on $e_{t-1,c}$ allows events to be coded with a delay, and its dependence on $\mathbf{u}_{t+1}$ allows the completeness of coding to vary with the encounter.
+
+Two features of the model matter. The observation depends on the context directly through $R$, via heart rate, autonomic tone, or acquisition conditions, and not only through the cardiac state. In addition, the context of the same transition, $\mathbf{u}_{t+1}$, influences both which events occur, which we call the \emph{event route}, and which are recorded, the \emph{recording route}. We call $\mathcal{G}=\{c:\boldsymbol{\delta}_c\not\equiv\mathbf{0}\}$ the set of \emph{grounded} codes. A code outside $\mathcal{G}$ may describe a real event, but one that leaves the electrocardiogram unchanged; we call it \emph{ungrounded}. We call a code \emph{confounded} if its events or its recording depend on $\mathbf{u}_{t+1}$, because the context is then a common cause of the label and of the change in the observation. The recording route makes confounding the rule rather than the exception: even a code whose events are independent of the context is confounded when it is documented more thoroughly during admissions.
+
+The recording route includes the provenance of the label itself. The document from which a label is written, and the coding process that produces it, can depend on the care setting: a short emergency visit and a full admission are summarized by different documents with different completeness, and coding conventions can change over time. Provenance is therefore a component of $\mathbf{u}_{t+1}$ in its own right, and because the care setting that determines it also changes the observation, provenance is a confounder. The label vector itself reveals it, since codes that only one kind of document records appear or vanish with that document whatever the patient's condition. When two consecutive encounters are summarized by the same document, as an emergency visit and the admission it led to can be, their labels are identical by construction and the pair carries no information about a transition; such pairs are excluded.
+
+We work in the representation space of an encoder trained without access to labels, $\mathbf{h}_t=\mathrm{Enc}(\mathbf{X}_t)\in\mathbb{R}^{d}$, for instance with the SIGReg objective of \citet{balestriero2025lejepa} applied to single recordings, and write $\mathbf{r}_t=\mathbf{h}_{t+1}-\mathbf{h}_t$ for the transition. The encoder must not be trained with same-patient positives, that is, with an objective that treats recordings of the same patient as positives for invariance and pulls their representations together, as patient-contrastive objectives do \citep{kiyasseh2021clocs,diamant2022pclr}. Invariance across a patient's recordings suppresses exactly the within-patient transitions that the world model must detect, and it can do so without any visible cost on cross-sectional benchmarks. The requirement does not exclude predictive objectives across visits, which predict the representation of a patient's next recording from the current one: their predictor can carry the change between the two recordings, so the representation is not forced to discard it. Objectives without any cross-visit pairing, such as predicting the representation of a segment of a recording from a disjoint segment of the same recording, also meet the requirement. In our experiments, however, such objectives learned detail specific to the individual recording rather than structure shared across a patient's recordings (Appendix~\ref{sec:wm-app-encoder}); this is an empirical observation about our data, not a general property of these objectives. Positive-control codes, whose electrocardiographic signatures are established, serve as the check: before any other code is interpreted, their debiased effect norms (\S\ref{sec:wm-test}) must clear the noise floor of the representation. Among candidate representations we use the one on which they do so most clearly. The choice is made on one half of the patients, and the positive controls are then reported on the other half. Effect norms measured on the patients that informed the choice are checks of it rather than evidence, because selection favors the candidate whose estimates happened to be large there. Only representations whose learned part satisfies the requirement above are candidates. When candidates cannot be told apart, we prefer, in this order, the concatenation of such a learned representation with fixed signal features, such as interval and amplitude measurements of the median beat, the learned representation alone, and the fixed features alone; $\mathbf{h}_t$ then denotes the chosen representation. The fixed features remain the readout on which the positive controls are validated, whichever candidate is chosen. An encoder trained with same-patient positives can be evaluated alongside the candidates as a reference, which tests the requirement empirically, but it is never chosen. The estimand for code $c$ is its interventional effect on the next representation with the other events held fixed,
+\begin{equation}
+\label{eq:wm-estimand}
+\boldsymbol{\Delta}_c(\mathbf{h},\tau)=\mathbb{E}\big[\mathbf{h}_{t+1}(1,\mathbf{e}_{t,-c})-\mathbf{h}_{t+1}(0,\mathbf{e}_{t,-c})\,\big|\,\mathbf{h}_t=\mathbf{h},\tau_t=\tau\big],
+\end{equation}
+where $\mathbf{h}_{t+1}(e,\mathbf{e}_{t,-c})$ denotes the potential next representation under $\mathrm{do}(e_{t,c}=e)$ with the events $\mathbf{e}_{t,-c}$ of the other codes held at their realized values. It is a controlled direct effect, averaged over the distribution of the other events: the part of the effect of $c$ that passes through other events, as when an infarction leads to heart failure, is excluded by definition. The other events are not observed, but their labels $\mathbf{a}_{t,-c}$ are, and conditioning on these labels (\S\ref{sec:wm-theory}) approximates holding the events fixed, as closely as the labels record them. The estimand concerns the event, not its record. We state results for onsets; resolutions are treated symmetrically. The goals are to recover $\mathcal{G}$, to estimate $\boldsymbol{\Delta}_c$ for $c\in\mathcal{G}$, and to obtain a world model whose counterfactual rollouts are driven only by the estimated effects. Because counterfactual transitions are never observed, rollouts are evaluated indirectly, in three ways. The first is the held-out likelihood of observed transitions. The second is the recovery of effects injected into real representations with known ground truth. The third reads the predicted effects of codes with established electrocardiographic signatures through probes onto clinical measurements, such as QRS duration for conduction blocks.
+
+This setting differs from those addressed by existing formulations in where the uncertainty lies. Latent action models infer actions from consecutive observations and, in the presence of action-correlated distractors, require supervision from ground-truth actions \citep{nikulin2025laom}. Causal representation learning from intervened sequences assumes that the recorded intervention targets are correct \citep{lippe2022citris}, or replaces them with latent binary interactions \citep{lippe2023biscuit}. Sparsity-based world models discover which latent variables an action affects \citep{lei2025spartan,lachapelle2026sparsity}. In all of these, a recorded action is treated as a cause of the transition. Here it is an annotation of the transition: weak, possibly without consequence, and correlated with an unobserved cause of the transition.
+
+% -----------------------------------------------------------------------------
+\subsection{Why prediction-based criteria fail}
+\label{sec:wm-failure}
+
+The most direct way to decide whether a code matters is to ask whether it improves the prediction of the transition. This can be read from the magnitude of its learned effect, from the sparsity pattern of an action-to-latent graph, or from the conditional mutual information between the code and the next state, as in causal action influence \citep{seitzer2021cai}. All of these criteria are functionals of the observational contrast
+\begin{equation}
+\label{eq:wm-contrast}
+\boldsymbol{\gamma}_c(\mathbf{h},\tau)=\mathbb{E}\big[\mathbf{r}_t\,\big|\,\mathbf{h}_t=\mathbf{h},\tau_t=\tau,a_{t,c}=1\big]-\mathbb{E}\big[\mathbf{r}_t\,\big|\,\mathbf{h}_t=\mathbf{h},\tau_t=\tau,a_{t,c}=0\big].
+\end{equation}
+For an ungrounded code, the label affects the transition only through its association with the context. By the law of total expectation, the contrast then equals the difference between the expected contribution of the context under the two label values, which is generically non-zero.
+
+\begin{proposition}[Confounded codes appear grounded]
+\label{prop:wm-failure}
+Let $c\notin\mathcal{G}$, and suppose that (i) the context affects the transition, in the sense that $\mathbb{E}[\mathbf{r}_t\mid\mathbf{u}_{t+1},\mathbf{h}_t,\tau_t]$ is non-constant in $\mathbf{u}_{t+1}$, and (ii) the label depends on the context, through either route, $a_{t,c}\not\!\perp\!\!\!\perp\mathbf{u}_{t+1}\mid\mathbf{h}_t,\tau_t$. Then $\boldsymbol{\gamma}_c\neq\mathbf{0}$ except on a non-generic set of cancellations. Consequently, any estimator consistent for the conditional mean of the transition attributes a non-zero effect to $c$, the conditional mutual information $I(\mathbf{h}_{t+1};a_{t,c}\mid\mathbf{h}_t,\tau_t)$ is positive, and any sparsity penalty weak enough to retain a grounded code whose effect is smaller than $\|\boldsymbol{\gamma}_c\|$ also retains $c$.
+\end{proposition}
+
+The proposition separates our setting from the one that action-mean centering was designed for \citep{li2026dueling}. Subtracting the mean prediction over actions removes variation that enters identically under every action, which is effective against distractors that move independently of the agent. By construction, however, it leaves untouched the variation that covaries with the action. That is exactly the regime of Proposition~\ref{prop:wm-failure}, and its authors name action-correlated distractors as the boundary of their guarantee. The failure is also the world-model analogue of causal confusion in imitation learning \citep{dehaan2019causal}, where a learner latches onto correlates of the target rather than its causes. In both cases the problem is not one of capacity or optimization but of identification.
+
+Longitudinal clinical data exhibit this pathology together with a second one. When action-independent variation dominates the prediction target, the one-step objective becomes nearly indifferent to the action \citep{li2026dueling}. On held-out transitions, the learned predictor then does no better than regressing the current state toward the population mean, and the action effects it does learn are fitted to the training transitions and do not transfer. In our data, patient identity, recording-to-recording variability, and the large fraction of stable pairs play this role. The model below addresses both pathologies.
+
+% -----------------------------------------------------------------------------
+\subsection{A factorized world model}
+\label{sec:wm-model}
+
+We replace the monolithic action-conditioned predictor by one that separates the sources of change:
+\begin{equation}
+\label{eq:wm-model}
+\hat{\mathbf{h}}_{t+1}=\mathbf{h}_t+\mathbf{d}_\theta(\mathbf{h}_t,\tau_t,\mathbf{v})+\mathbf{k}_\theta(\mathbf{h}_t,\hat{\mathbf{u}}_{t+1})+\sum_{c\notin\mathcal{C}_0} g_c\,\mathbf{m}_c\odot\mathbf{f}_{\theta,c}(\mathbf{h}_t,\tau_t,a_{t,c}).
+\end{equation}
+The drift term $\mathbf{d}_\theta$ models change attributable to elapsed time and to static covariates $\mathbf{v}$ of the patient, such as age and sex. These covariates are observed and partly encoded in $\mathbf{h}_t$. We give them to the drift term and to the context estimator explicitly, because what $\mathbf{h}_t$ encodes of them is incomplete, and confounding through them would otherwise be removed only in part. The context term $\mathbf{k}_\theta$ receives an estimate $\hat{\mathbf{u}}_{t+1}$ of the clinical context of the transition, constructed only from proxy variables as described in \S\ref{sec:wm-deconf}. Each code outside the anchor set $\mathcal{C}_0$, also defined in \S\ref{sec:wm-deconf}, has its own code channel $\mathbf{f}_{\theta,c}$.
+
+Code channels are expressed in a shared basis of $K$ mechanism functions,
+\begin{equation}
+\label{eq:wm-basis}
+\mathbf{f}_{\theta,c}(\mathbf{h},\tau,a)=[a]_{+}\sum_{k=1}^{K}\alpha^{+}_{c,k}\,\mathbf{M}_{\theta,k}(\mathbf{h},\tau)-[a]_{-}\sum_{k=1}^{K}\alpha^{-}_{c,k}\,\mathbf{M}_{\theta,k}(\mathbf{h},\tau),
+\end{equation}
+where $[a]_{+}$ and $[a]_{-}$ denote the positive and negative parts of $a$. Given $\mathbf{y}_t$, only one direction of change is admissible for each code, an onset if $y_{t,c}=0$ and a resolution if $y_{t,c}=1$, so each channel takes one of two values on any pair. The coefficient vectors $\boldsymbol{\alpha}^{\pm}_c$ act as a learned continuous embedding of each code, through which rare codes borrow statistical strength from common ones that share mechanisms. Separate onset and resolution coefficients allow the effect of resolving a condition to differ from the reverse of its onset, as expected for irreversible conditions.
+
+By construction, $\mathbf{f}_{\theta,c}(\mathbf{h},\tau,0)=\mathbf{0}$. A code channel is therefore silent on every pair on which its label does not change, and variation shared by all pairs must be explained by $\mathbf{d}_\theta$ or $\mathbf{k}_\theta$. This plays the role that action-mean centering plays in \citet{li2026dueling}. Explicit centering over label values would add nothing here. It would leave the contrast between label values unchanged, add an offset to the prediction of every stable pair, and average over a label value that is inadmissible given $\mathbf{y}_t$. By Proposition~\ref{prop:wm-failure}, neither centering nor this parameterization handles confounded codes; the context term does (\S\ref{sec:wm-deconf}).
+
+Each code channel is multiplied by a stochastic gate $g_c\in[0,1]$ with the hard-concrete relaxation and an expected-$L_0$ penalty \citep{louizos2018l0}, so that ungrounded codes can be switched off entirely. The optional masks $\mathbf{m}_c\in[0,1]^{d}$, regularized with an $L_1$ penalty, restrict each code to a sparse subset of latent dimensions in the spirit of mechanism sparsity \citep{lachapelle2026sparsity}. Gates and masks serve the final world model and its interpretation, by revealing which latent directions each code moves. They are required neither for identification nor for the grounding test, which is computed without them (\S\ref{sec:wm-test}).
+
+The predictive distribution is a diagonal Gaussian,
+\begin{equation}
+p_\theta(\mathbf{h}_{t+1}\mid\cdot)=\mathcal{N}\big(\hat{\mathbf{h}}_{t+1},\operatorname{diag}\boldsymbol{\sigma}^2_\theta(\mathbf{h}_t,\tau_t,\hat{\mathbf{u}}_{t+1})\big),
+\end{equation}
+whose variance does not depend on the labels, so that the likelihood-based score of \S\ref{sec:wm-test} reflects mean effects only. The training objective is
+\begin{equation}
+\label{eq:wm-objective}
+\begin{split}
+\mathcal{L}(\theta,\omega)={}&\frac{\sum_t w_t\,\big[-\log p_\theta(\mathbf{h}_{t+1}\mid\mathbf{h}_t,\tau_t,\hat{\mathbf{u}}_{t+1},\mathbf{a}_t)\big]}{\sum_t w_t}\\
+&+\lambda_0\sum_{c\notin\mathcal{C}_0}\mathbb{E}\big[\|g_c\|_0\big]+\lambda_1\sum_{c\notin\mathcal{C}_0}\|\mathbf{m}_c\|_1,
+\end{split}
+\end{equation}
+where $\omega$ are the parameters of the context estimator and the weights $w_t$ rebalance stable and changed pairs by inverse frequency, counteracting the dominance of stable pairs that makes the predictor indifferent to the labels.
+
+The encoder is kept frozen. Training it jointly would allow the representation to be reshaped so that confounded codes become predictive, and keeping it fixed turns every statement in \S\ref{sec:wm-theory} into a statement about a fixed space.
+
+% -----------------------------------------------------------------------------
+\subsection{Deconfounding with negative-control anchors}
+\label{sec:wm-deconf}
+
+The context estimator always receives the observed covariates $\mathbf{z}_t$. These are the elapsed time, the care setting at $t$ and $t+1$ (emergency, inpatient, or outpatient), the coding scheme in force at each encounter, and the static covariates $\mathbf{v}$, age and sex. Where these covariates are recorded, they remove much of the confounding by observed context, but they are not sufficient: an association can remain after them that no recorded variable explains, such as one carried by the severity of an acute illness, and the method bounds such a residual with the margin of \S\ref{sec:wm-test} rather than removing it. Where the encounter covariates are missing or incomplete, the label vector supplies part of what they would provide, because it reveals the provenance of the labels, namely the care setting and the coding process that produced them. In our application the anchors recovered such provenance, but they revealed the care setting only in part, and a contribution beyond provenance could not be established; we therefore treat them as proxies of label provenance and coding intensity, and we do not rely on them as proxies of the acute context, a role that our data could not establish.
+
+The core of the method is a set $\mathcal{C}_0$ of \emph{anchor} codes that have no electrophysiological route to the electrocardiogram. We do not hand-pick a short list of them. Instead, $\mathcal{C}_0$ is the full set of frequent codes that a documented rule classifies as having no such route. The rule excludes conditions that act on the heart directly or through electrolytes, drugs, heart rate, hypoxia, the brain, or the liver, codes with cardiac content, and codes that travel with grounded events. The rule is applied to the full label set, and it is fixed and frozen, together with the codes it selects, before the pre-specified analyses; the rule and the codes are listed in Appendix~\ref{sec:wm-app-anchors}. In our application, the form of the anchor set, a broad rule-based set rather than a short curated list, was informed by exploratory analyses of the same data. % defined in method_appendix_anchors.tex (generated from the frozen label_sets.json)
+Individual anchors are weak proxies of the context. Each is recorded at a small fraction of encounters, and its presence or absence says little about any one of them. The context is recovered from many anchors jointly, from how many are recorded and of which kinds. Acute complaints that are recorded in every care setting track the acute context, while chronic conditions that are recorded mainly in fuller documents track coding intensity and provenance. Anchors receive no code channel in Equation~\eqref{eq:wm-model}; instead, their labels enter the context estimator,
+\begin{equation}
+\label{eq:wm-context}
+\hat{\mathbf{u}}_{t+1}=q_\omega\big(\mathbf{h}_t,\mathbf{z}_t,\mathbf{a}^{\mathcal{C}_0}_t\big).
+\end{equation}
+The estimator excludes, by design, the next observation $\mathbf{X}_{t+1}$, its representation $\mathbf{h}_{t+1}$, and the labels of non-anchor codes. With access to the next observation it could absorb the effects of grounded codes, and with access to non-anchor labels it would compete with the very code channels it is meant to deconfound. Because anchors cannot affect the transition, any predictive power they carry must be routed through the context term. As a result, $\mathbf{k}_\theta$ learns the contribution of the context to the transition, and each non-anchor code is credited only with the change that remains once the context is accounted for. Anchors serve both confounding routes. They are recorded in response to the same acute contexts as the codes under test, and an encounter that documents many comorbidities also documents more anchor codes, so they measure coding intensity as well.
+
+In the terminology of proximal causal inference, anchors are negative-control exposures: proxies of the hidden confounder that have no direct effect on the outcome \citep{lipsitch2010negative,shi2020negative,miao2018proxy,tchetgen2020proximal}. The construction rests on four requirements. The first is exclusion, namely that anchors truly have no effect on the electrocardiogram. The second is separation, namely that anchors do not co-occur with the events of grounded codes beyond what the context explains. Venous thrombosis, for example, travels with pulmonary embolism, which does change the electrocardiogram; as an anchor it would route part of that effect into the context term, which would then absorb it. The third is relevance, namely that anchors are coded in response to the same contexts as the codes under test. The fourth is sufficiency, namely that $\hat{\mathbf{u}}_{t+1}$ captures enough of $\mathbf{u}_{t+1}$ to render the remaining labels ignorable. Sufficiency is the strongest requirement. Adjusting for proxies of a confounder removes confounding only when the confounder is recoverable from them; otherwise residual bias remains. This motivates both the optional proximal extension below and the sensitivity analysis of \S\ref{sec:wm-theory}. Using many anchors also limits the damage that any single one can do: a code that violates exclusion or separation has little influence on $\hat{\mathbf{u}}_{t+1}$, and systematic violations show up in the rotation estimate of residual bias.
+
+The rule that defines $\mathcal{C}_0$ is frozen before the pre-specified analyses, and the codes it selects play three disjoint roles. A fixed subset serves only as negative controls that validate the procedure. The remaining codes are rotated: in each rotation, one group of them is withheld from the context estimator and given code channels, so that their residual effects estimate the residual bias (\S\ref{sec:wm-theory}), while the others enter the context estimator. No code is used in two roles at once, since that would let the procedure confirm its own choices.
+
+A tempting alternative is to fit a factor model to the full label vector $\mathbf{a}_t$ and adjust for its latent factors, as in the deconfounder \citep{wang2019blessings}. Without further assumptions, however, effects are not identified by this route \citep{damour2019multicause}. We therefore use the posterior of such a factor model only as an additional input to $q_\omega$, never as the basis for identification.
+
+Once the contribution of the context is routed through $\mathbf{k}_\theta$, and to the extent that the anchors suffice, the residual association between a confounded code and the transition vanishes; what remains is bounded by the margin of \S\ref{sec:wm-test} rather than removed. The code then falls back into the regime in which action-independent variation is handled by the parameterization of Equation~\eqref{eq:wm-basis}, as by centering in \citet{li2026dueling}, and in which sparsity \citep{lei2025spartan,lachapelle2026sparsity} behaves as intended. In this sense, deconfounding does not replace these mechanisms; it is what makes them valid in our setting.
+
+\paragraph{Optional extension: outcome-side proxies.}
+The method does not require this extension, and we use it only when outcome-side proxies $\mathbf{W}_t$ are available and validated. These are measurements at $t+1$ that respond to the context but are affected neither by the cardiac events under study nor by the treatment-side proxies $\mathbf{Z}_t=(\mathbf{z}_t,\mathbf{a}^{\mathcal{C}_0}_t)$, such as body temperature or white-cell count for some families of codes. Validation means showing, for each family, that a candidate responds to the anchors but not to the positive-control codes. The effect is then identified through an outcome bridge $\mathbf{b}$ that solves
+\begin{align}
+\mathbb{E}\big[\mathbf{r}_t-\mathbf{b}(\mathbf{W}_t,a_{t,c},\mathbf{h}_t,\tau_t)\,\big|\,a_{t,c},\mathbf{Z}_t,\mathbf{h}_t,\tau_t\big]&=\mathbf{0}, \label{eq:wm-bridge}\\
+\mathbb{E}\big[\mathbf{b}(\mathbf{W}_t,1,\mathbf{h},\tau)-\mathbf{b}(\mathbf{W}_t,0,\mathbf{h},\tau)\,\big|\,\mathbf{h}_t=\mathbf{h},\tau_t=\tau\big]&=\text{label effect of }c, \label{eq:wm-bridge-effect}
+\end{align}
+following \citet{miao2018proxy} and \citet{tchetgen2020proximal}. We estimate the bridge with the deep-feature procedure of \citet{xu2021dfpv}, and its contrast replaces that of the code channel $\mathbf{f}_{\theta,c}$; earlier recordings can serve as additional proxies \citep{lu2023pessimism}.
+
+% -----------------------------------------------------------------------------
+\subsection{Testing grounding}
+\label{sec:wm-test}
+
+We decide grounding from two statistics computed on held-out patients, one based on the magnitude of the estimated effect and one based on the full predictive distribution. Both are computed apart from model selection. The gates and masks of Equation~\eqref{eq:wm-objective} shrink effects toward zero, and confidence intervals computed after such data-driven selection are unreliable near zero, where the decision is made. A weak grounded code could then be declared ungrounded because of the penalty alone.
+
+We therefore split patients into four disjoint sets. On a \emph{selection set}, the full model is fit with its penalties, after which its drift term, context estimator, and mechanism basis $\mathbf{M}_{\theta,k}$ are frozen. On two \emph{training sets}, $A$ and $B$, the code coefficients $\boldsymbol{\alpha}^{\pm}_c$ of every non-anchor code are refit without gates, masks, or penalties, jointly with the output layer of the context term, which preserves the joint fitting of \S\ref{sec:wm-training}. The statistics are computed on the fourth set, the \emph{evaluation set}. Rotating the roles of the sets gives cross-fitted versions that use all patients.
+
+Let $\mathcal{O}_c$ be the set of onset transitions of code $c$ in the evaluation set, and $\boldsymbol{\Sigma}$ the within-patient covariance of $\mathbf{r}_t$ on stable pairs. The refits on $A$ and $B$ yield two independent effect estimates $\hat{\boldsymbol{\Delta}}^{(A)}_c$ and $\hat{\boldsymbol{\Delta}}^{(B)}_c$, each given by the contrast $\mathbf{f}_{\theta,c}(\mathbf{h},\tau,1)-\mathbf{f}_{\theta,c}(\mathbf{h},\tau,0)$. The squared magnitude of the effect, $\psi^{2}_c$, defined as the mean squared Mahalanobis norm of the label effect over onset transitions, is estimated by
+\begin{equation}
+\label{eq:wm-effect}
+\hat{\psi}^{2}_c=\frac{1}{|\mathcal{O}_c|}\sum_{t\in\mathcal{O}_c}\big\langle\hat{\boldsymbol{\Delta}}^{(A)}_c(\mathbf{h}_t,\tau_t),\,\hat{\boldsymbol{\Delta}}^{(B)}_c(\mathbf{h}_t,\tau_t)\big\rangle_{\boldsymbol{\Sigma}^{-1}}.
+\end{equation}
+We estimate $\boldsymbol{\Sigma}$ with the shrinkage estimator of \citet{ledoit2004wellconditioned}, applied to the stable-pair changes after standardizing each dimension, so that the covariance is shrunk toward the diagonal of their variances and the metric does not depend on the units of individual features. A learned representation can vary along far fewer directions than it has, and its sample covariance is then ill-conditioned: the inverse multiplies estimation noise along the nearly flat directions until that noise dominates the statistic. The shrinkage intensity is estimated analytically from the data, so the estimator has no tuning parameter. As sensitivity analyses, we also report the statistic with the pseudo-inverse of the sample covariance restricted to the principal subspace that holds nearly all of the stable-pair variance, and with the full inverse; decisions use the shrinkage estimate. The covariance is estimated separately for each representation, on the stable pairs of the patients on which the statistic is computed.
+Because the two estimates are independent, the expectation of each inner product equals the inner product of their expectations, so estimation noise does not inflate the statistic. Because they are unpenalized, these expectations are not shrunk toward zero either. The plug-in squared norm of a single estimate, by contrast, is biased upward by the variance of the estimator and would make every code appear somewhat grounded. For the same reason, $\hat{\psi}^{2}_c$ can be negative when the effect is null. Measuring the effect in units of within-patient variability also gives the decision threshold below a direct interpretation. The statistic is a degenerate U-statistic when the effect is null: its variance there is of higher order, and a bootstrap that resamples both halves overstates it severalfold. We therefore test against zero with a conditional randomization test \citep{candes2018panning}, which redraws the labels from the cross-fitted propensity model and recomputes the statistic with the residualized outcomes held fixed, and we build intervals from a bias-corrected plug-in variance that combines the covariances of the two estimates, each obtained by bootstrapping patients within its own half, which is cheap because the basis is frozen.
+
+We complement the magnitude with the held-out likelihood gain
+\begin{equation}
+\label{eq:wm-score}
+S_c=\frac{1}{|\mathcal{D}|}\sum_{t\in\mathcal{D}}\Big[\log p_\theta\big(\mathbf{h}_{t+1}\mid\mathbf{h}_t,\tau_t,\hat{\mathbf{u}}_{t+1},\mathbf{a}_t\big)-\log p_{\theta^{\setminus c}}\big(\mathbf{h}_{t+1}\mid\mathbf{h}_t,\tau_t,\hat{\mathbf{u}}_{t+1},\mathbf{a}_{t,-c}\big)\Big],
+\end{equation}
+where $\mathcal{D}$ is the set of held-out transitions, $\theta$ the unpenalized refit, and $\theta^{\setminus c}$ the same refit with the coefficients of $c$ fixed at zero. The score estimates the conditional mutual information $I(\mathbf{h}_{t+1};a_{t,c}\mid\mathbf{h}_t,\tau_t,\hat{\mathbf{u}}_{t+1},\mathbf{a}_{t,-c})$. This is the influence measure of \citet{seitzer2021cai}, conditioned on the estimated context, which is what separates it from the confounded quantity of Proposition~\ref{prop:wm-failure}.
+
+The null distributions of both statistics are calibrated with placebo labels and with permutations. To construct placebo labels, we fit a propensity model $\hat{\pi}_c(a\mid\mathbf{h}_t,\tau_t,\hat{\mathbf{u}}_{t+1})$ and draw labels $\tilde{a}_{t,c}$ from it with the prevalence of the real code; such labels share the code's dependence on the observed state but have no link to the transition. Permutations are performed within strata of elapsed time and care setting. Multiplicity across codes is controlled with the Benjamini--Hochberg procedure \citep{benjamini1995fdr}.
+
+A code is declared \emph{grounded} when the lower confidence bound of $\psi^{2}_c$ exceeds $\varepsilon^{2}$, for a margin $\varepsilon>0$, and $S_c$ exceeds its calibrated null. It is declared \emph{ungrounded} when the upper confidence bound of $\psi^{2}_c$ falls below $\varepsilon^{2}$, which is an equivalence test in the sense of \citet{schuirmann1987tost}; a merely non-significant effect is not taken as evidence of absence. Because $\hat{\psi}^{2}_c$ comes from unpenalized refits, an upper bound below the margin reflects the data rather than the penalty. A code is declared \emph{not identifiable} when overlap fails, that is, when $\hat{\pi}_c$ lies outside $[\eta,1-\eta]$ for most onsets, as happens for codes assigned only during admissions. Codes that meet none of these conditions are reported as \emph{inconclusive}. The margin is set no smaller than $\hat{\Gamma}$, a random-effects estimate of residual confounding over held-out no-route codes, obtained by rotation (\S\ref{sec:wm-theory}). A residual association that no proxy explains is not removed by the method. It is measured by $\hat{\Gamma}$ and absorbed by the margin, at the cost of power, so that it cannot by itself lead to a code being declared grounded. Reporting the last two classes explicitly is part of the method, since they mark the codes about which the data cannot speak. The gated model of the selection set enters the final world model of \S\ref{sec:wm-training} but never these decisions.
+
+% -----------------------------------------------------------------------------
+\subsection{Weak labels}
+\label{sec:wm-weak}
+
+Recorded labels miss events, contain spurious ones, and lag behind the physiology, and how much they do so depends on the encounter. We model this with a per-code observation model,
+\begin{equation}
+\label{eq:wm-obsmodel}
+P\big(a_{t,c},a_{t+1,c}\mid e_{t,c},\mathbf{z}_t,\mathbf{a}^{\mathcal{C}_0}_t\big),
+\end{equation}
+the probability of the recorded labels given the true event, the encounter covariates and the anchor labels. Its miss rate, its false-positive rate, and the probability that an event is recorded one step late are logistic functions of the observed encounter covariates, among them the care setting and the coding scheme, and of the anchor labels, which measure how thoroughly the encounter was coded. The model does not depend on the context estimate $\hat{\mathbf{u}}_{t+1}$, which is also a function of $\mathbf{h}_t$ and would let the recording depend on the cardiac state; this keeps it within Assumption~\ref{ass:wm-recording}. As long as the recording depends on the context only through these observed variables, label noise attenuates effects, possibly unevenly across contexts, but does not create them (Proposition~\ref{prop:wm-anchored}). Grounding decisions therefore do not require modeling the noise, whereas effect magnitudes do.
+
+For codes declared grounded, we therefore infer the true events with the EM algorithm. Its expectation step computes the posterior
+\begin{equation}
+\label{eq:wm-posterior}
+\begin{split}
+q(e_{t,c}=e)\;\propto\;{}&P\big(a_{t,c},a_{t+1,c}\mid e_{t,c}=e,\mathbf{z}_t,\mathbf{a}^{\mathcal{C}_0}_t\big)\\
+&\times\pi_c\big(e\mid\mathbf{h}_t,\tau_t,\hat{\mathbf{u}}_{t+1}\big)\\
+&\times\mathcal{N}\big(\mathbf{h}_{t+1};\hat{\mathbf{h}}^{(c\leftarrow e)}_{t+1},\operatorname{diag}\boldsymbol{\sigma}^{2}_\theta\big),
+\end{split}
+\end{equation}
+where $\hat{\mathbf{h}}^{(c\leftarrow e)}_{t+1}$ is Equation~\eqref{eq:wm-model} with $e$ substituted for $a_{t,c}$, and the maximization step refits the code channels with posterior weights. The posterior uses only the code's own channel, never a free latent action, which prevents it from absorbing the context in the way that unconstrained latent action models absorb distractors \citep{nikulin2025laom}. Posteriors for each fold of patients are computed with parameters fit on the other folds; this cross-fitting \citep{chernozhukov2018dml} prevents the procedure from confirming its own errors.
+
+Grounded effects are small relative to the variability of the transition. For many codes, the likelihood term therefore barely moves the posterior away from the product of the prior $\pi_c$ and the observation model. In that case the posterior would mostly restate which patients are likely to have the condition. We report, for each code, how far the likelihood moves the posterior on average, and interpret per-onset posteriors only where it does. There, a by-product is, for every recorded onset, the probability that it produced a visible electrocardiographic change, which flags candidate coding errors.
+
+% -----------------------------------------------------------------------------
+\subsection{Training procedure}
+\label{sec:wm-training}
+
+Training proceeds in stages. The encoder is first trained without labels and without same-patient positives (\S\ref{sec:wm-setting}), checked on the positive-control codes, and frozen, so that all subsequent stages operate on fixed representations $\mathbf{h}_t$. On the selection set of \S\ref{sec:wm-test}, the drift term, the context term, and the context estimator are then fit with the code channels disabled, so that the model first explains what elapsed time and the estimated context can explain. Next, the code channels are enabled with their gates and masks, and the whole model is fit jointly under Equation~\eqref{eq:wm-objective}. Joint fitting matters here: if the context term were held fixed after the warm start, it would retain the part of each grounded effect that is correlated with the context, and the code channels would underestimate those effects. Finally, the mechanism basis and the context estimator are frozen, the unpenalized refits of \S\ref{sec:wm-test} are computed, and the grounding test is run. Codes not declared grounded are pruned from the final world model, whose gates and masks serve interpretation.
+
+Optionally, the label posteriors of \S\ref{sec:wm-weak} are inferred and the encoder is fine-tuned with stop-gradient targets and the SIGReg penalty. During this stage the context term and the pruning decisions are held fixed, and we verify that no pruned code would be reinstated. Throughout, model selection does not rely on validation loss alone, because validation loss favors predictors that are indifferent to the labels \citep{li2026dueling}. We additionally require that positive-control codes, those with established electrocardiographic signatures, retain a non-zero effect.
+
+% -----------------------------------------------------------------------------
+\subsection{Identification guarantees}
+\label{sec:wm-theory}
+
+Without further assumptions, effects are not identifiable from confounded observational data, and existing approaches either accept this and represent the resulting uncertainty \citep{pace2024delphic} or bring in additional structure. Our additional structure is the set of anchors. The statements below are standard results of causal inference specialized to this setting; we give them to make explicit what each step of the method assumes, so that each assumption can be argued for, or tested, on its own. Throughout, $\mathbf{S}_t=(\mathbf{h}_t,\tau_t,\mathbf{z}_t,\hat{\mathbf{u}}_{t+1},\mathbf{a}_{t,-c})$ denotes the conditioning set of code $c$. The observed encounter covariates $\mathbf{z}_t$ include the static covariates $\mathbf{v}$ (\S\ref{sec:wm-deconf}), and the other labels $\mathbf{a}_{t,-c}$ include the anchor labels $\mathbf{a}^{\mathcal{C}_0}_t$.
+
+\begin{assumption}[Anchor exclusion and separation]
+\label{ass:wm-anchors}
+For every $n\in\mathcal{C}_0$, (i) $\boldsymbol{\delta}_n\equiv\mathbf{0}$, and the label $a_{t,n}$ has no effect on $\mathbf{X}_{t+1}$; and (ii) given $\mathbf{u}_{t+1}$, $\mathbf{h}_t$ and $\tau_t$, the anchor labels are independent of the events $e_{t,c}$ of every non-anchor code $c$.
+\end{assumption}
+
+\begin{assumption}[Proxy sufficiency]
+\label{ass:wm-sufficiency}
+For every $c\notin\mathcal{C}_0$ and $e\in\{0,1\}$,
+\[
+\mathbf{h}_{t+1}(e)\perp\!\!\!\perp e_{t,c}\mid\mathbf{S}_t
+\qquad\text{and}\qquad
+\mathbf{h}_{t+1}(e)\perp\!\!\!\perp a_{t,c}\mid e_{t,c},\mathbf{S}_t,
+\]
+with $\hat{\mathbf{u}}_{t+1}$ as in Equation~\eqref{eq:wm-context}.
+\end{assumption}
+
+The first condition removes the event route and the second the recording route. Once the true event and the conditioning set are fixed, the recorded label must carry no further information about the transition. Conditioning on the other codes $\mathbf{a}_{t,-c}$ blocks confounding through co-recorded codes, and it approximates the estimand of Equation~\eqref{eq:wm-estimand}, which holds the other events fixed. The effects that it blocks are those mediated by other codes, as when an infarction leads to chronic ischemic disease and heart failure being coded, and these are excluded from $\boldsymbol{\Delta}_c$ by definition.
+
+Over-adjustment is the practical consequence of this choice, and it takes two forms that grounding decisions treat differently. Codes with an electrophysiological route of their own, such as electrolyte disorders or the treatments that accompany an arrhythmia, are often mediators of a grounded event, and conditioning on them absorbs part of its effect \citep{schisterman2009overadjustment}. From observational data alone, such absorption cannot be told apart from genuine confounding by those conditions. Grounding decisions tolerate mediators. Conditioning on a mediator attenuates an effect, which can move a weakly grounded code from grounded to inconclusive, but it does not create one. Colliders are a different matter. A code that is a common effect of $c$ and of the context, or of $c$ and of the change in the observation, opens a path between $c$ and the transition when it is conditioned on, and it can thereby make an ungrounded code appear grounded. Restricting the analysis to transitions in which $c$ is the only code that changes does not avoid this, since it conditions on the other codes at the value zero. We therefore repeat each grounding decision with the labels of the other non-anchor codes removed from the conditioning set, keeping the encounter covariates $\mathbf{z}_t$ and the anchor labels in both versions. A decision that holds only when the other labels are conditioned on is flagged as possibly induced by a collider. The estimate restricted to single-code transitions is reported only as a descriptive sensitivity analysis. Effect magnitudes tolerate neither form of over-adjustment, so we report them twice, with and without the codes that have an electrophysiological route in the conditioning set.
+
+\begin{assumption}[Informative labels]
+\label{ass:wm-labels}
+For every $c\notin\mathcal{C}_0$,
+\[
+\kappa_c(\mathbf{S}_t)=P(e_{t,c}=1\mid a_{t,c}=1,\mathbf{S}_t)-P(e_{t,c}=1\mid a_{t,c}=0,\mathbf{S}_t)>0
+\]
+almost surely. The coefficient may vary with $\mathbf{S}_t$, so coding may be more complete in some contexts than in others.
+\end{assumption}
+
+\begin{assumption}[Overlap]
+\label{ass:wm-overlap}
+For some $\eta>0$ and every $c\notin\mathcal{C}_0$,
+\[
+\eta\leq P\big(a_{t,c}=1\mid\mathbf{S}_t\big)\leq1-\eta .
+\]
+\end{assumption}
+
+\begin{assumption}[Non-differential recording given the encounter]
+\label{ass:wm-recording}
+For every $c\notin\mathcal{C}_0$, $\kappa_c(\mathbf{S}_t)\equiv\kappa_c(\mathbf{z}_t,\mathbf{a}^{\mathcal{C}_0}_t)$ depends on the conditioning set only through the observed encounter covariates $\mathbf{z}_t$ and the anchor labels $\mathbf{a}^{\mathcal{C}_0}_t$, the variables on which the observation model of \S\ref{sec:wm-weak} depends.
+\end{assumption}
+
+Labels are not required to be non-differential unconditionally. The completeness of coding may vary with the care setting and the coding scheme, which are observed and which the label vector itself reveals (\S\ref{sec:wm-setting}), and with how thoroughly the encounter was coded, which the anchor labels measure (\S\ref{sec:wm-deconf}). What the assumption excludes is a dependence on the unobserved context or on the cardiac state once $\mathbf{z}_t$ and $\mathbf{a}^{\mathcal{C}_0}_t$ are fixed. For the same reason the observation model conditions on these observed variables and not on the context estimate $\hat{\mathbf{u}}_{t+1}$, which is also a function of $\mathbf{h}_t$.
+
+\begin{proposition}[Anchored identification]
+\label{prop:wm-anchored}
+Under Assumptions~\ref{ass:wm-anchors}--\ref{ass:wm-overlap}, suppose that the transition is additive in code effects given the context, so that the effect of $c$ depends on the state only through $(\mathbf{h}_t,\tau_t)$, and that the model class of Equation~\eqref{eq:wm-model} contains the true conditional mean. Then, at the population optimum of the unpenalized objective and for every $c\notin\mathcal{C}_0$,
+\[
+\mathbf{f}_{\theta,c}(\mathbf{h},\tau,1)-\mathbf{f}_{\theta,c}(\mathbf{h},\tau,0)=\bar{\kappa}_c(\mathbf{h},\tau)\,\boldsymbol{\Delta}_c(\mathbf{h},\tau),
+\]
+where $\bar{\kappa}_c(\mathbf{h},\tau)>0$ is a weighted average of $\kappa_c(\mathbf{S}_t)$ over transitions with $\mathbf{h}_t=\mathbf{h}$ and $\tau_t=\tau$. Consequently $\psi^{2}_c=0$ and $S_c=0$ if and only if $c\notin\mathcal{G}$, provided that for $c\in\mathcal{G}$ the effect $\boldsymbol{\Delta}_c$ is non-zero with positive probability over onset transitions. Under Assumption~\ref{ass:wm-recording} in addition, $\bar{\kappa}_c$ depends only on the observed encounter covariates and the anchor labels, so effect magnitudes are identified within each of their strata up to a scale that the observation model of \S\ref{sec:wm-weak} estimates.
+\end{proposition}
+
+Proposition~\ref{prop:wm-anchored} combines backdoor adjustment on the estimated context with the attenuation of effects under exposure misclassification. Label noise rescales effects, unevenly across contexts when coding depends on the encounter, but it cannot turn an ungrounded code into a grounded one. Grounding decisions therefore need only Assumptions~\ref{ass:wm-anchors}--\ref{ass:wm-overlap}; Assumption~\ref{ass:wm-recording} matters only for magnitudes. When proxy sufficiency is in doubt and validated outcome-side proxies are available, the optional extension of \S\ref{sec:wm-deconf} replaces it with the conditions of Proposition~\ref{prop:wm-proximal}.
+
+\begin{proposition}[Proximal identification]
+\label{prop:wm-proximal}
+Let $U=\mathbf{u}_{t+1}$, and suppose that the proxies satisfy the exclusion restrictions
+\[
+\mathbf{Z}_t\perp\!\!\!\perp\big(\mathbf{h}_{t+1}(\cdot),\mathbf{W}_t\big)\mid U,\mathbf{h}_t,\tau_t
+\qquad\text{and}\qquad
+\mathbf{W}_t\perp\!\!\!\perp\big(a_{t,c},\mathbf{Z}_t\big)\mid U,\mathbf{h}_t,\tau_t,
+\]
+that the distribution of $U$ given $(a_{t,c},\mathbf{Z}_t,\mathbf{h}_t,\tau_t)$ is complete, and that a solution $\mathbf{b}$ of Equation~\eqref{eq:wm-bridge} exists. Then
+\[
+\mathbb{E}\big[\mathbf{h}_{t+1}(a)-\mathbf{h}_t\mid\mathbf{h},\tau\big]=\mathbb{E}\big[\mathbf{b}(\mathbf{W}_t,a,\mathbf{h},\tau)\mid\mathbf{h},\tau\big],
+\]
+so the bridge contrast of Equation~\eqref{eq:wm-bridge-effect} identifies the label effect \citep{miao2018proxy,tchetgen2020proximal}, and under Assumption~\ref{ass:wm-labels} this effect vanishes if and only if $c\notin\mathcal{G}$.
+\end{proposition}
+
+Neither exclusion restriction can be fully verified from data, which is why the extension is used only with validated proxies and is always paired with the sensitivity analysis below.
+
+\begin{proposition}[Sensitivity to residual confounding]
+\label{prop:wm-sensitivity}
+Suppose Assumption~\ref{ass:wm-sufficiency} holds only approximately, so that the anchored contrast equals $\bar{\kappa}_c\boldsymbol{\Delta}_c+\boldsymbol{\beta}_c$ with residual bias $\|\boldsymbol{\beta}_c\|_{\boldsymbol{\Sigma}^{-1}}\leq\Gamma$ on onset transitions, measured with the same estimate of $\boldsymbol{\Sigma}$ as $\psi^{2}_c$ in Equation~\eqref{eq:wm-effect}. Then the rule that declares $c$ grounded only when the lower confidence bound of the unpenalized $\psi^{2}_c$ exceeds $\varepsilon^{2}$, with $\varepsilon\geq\Gamma$, has an asymptotic false-grounding probability of at most the nominal level. If $\Gamma$ is instead an upper quantile of the distribution of residual biases across codes, as for the estimate below, the guarantee covers the codes whose residual lies within that quantile, not the worst case.
+\end{proposition}
+
+The no-route codes also provide an estimate of $\Gamma$, by rotation. The codes of $\mathcal{C}_0$ outside the validation subset (\S\ref{sec:wm-deconf}) are split into groups. In each rotation one group is withheld: its codes are given code channels, and the context estimator is refit on the remaining anchors. The code whose residual is being measured is never among the inputs of the context estimator, and neither is any code under test. By Assumption~\ref{ass:wm-anchors}, every withheld code $n$ has $\boldsymbol{\Delta}_n=\mathbf{0}$, so its statistic $\hat{\psi}^{2}_n$ measures residual bias alone. It is computed with the same shrinkage estimate of $\boldsymbol{\Sigma}$ as the statistics of the tested codes, so that the margin and the codes it is compared with are in the same units. Every code is withheld once across the rotations. Each statistic is the code's true residual plus estimation noise, whose variance the patient bootstrap provides, so we treat the statistics as a random-effects sample. The true residuals vary across codes around a mean $\mu$ with between-code variance $\tau^{2}$, and we estimate both by the method of \citet{dersimonian1986meta}. We set $\hat{\Gamma}^{2}=\hat{\mu}+1.645\,\hat{\tau}$, the 95th percentile of the true residuals under a normal random-effects model, or the upper 95\% confidence bound of $\hat{\mu}$ when $\hat{\tau}=0$; this sets the margin of \S\ref{sec:wm-test}. A quantile of the statistics themselves would instead mix the spread of the true residuals with the estimation noise of each withheld code. The lower confidence bound of the tested code already accounts for that code's own estimation noise, so counting noise again in the margin would cost power without protecting against any further bias. As a secondary analysis, we compute the margin within groups of codes that share a recording profile, such as codes recorded in every care setting and codes recorded only during admissions, and compare each tested code with the margin of its own profile. The estimate is valid to the extent that withheld codes and tested codes are exposed to comparable residual confounding, and its spread across rotations doubles as a falsification test of the anchor rule. A residual that persists after deconfounding for codes without any plausible route is thus handled by the margin rather than removed: a code is declared grounded only when its effect exceeds what such residuals reach.
+
+All statements above concern effects on the representation of a fixed encoder. They translate to the electrocardiogram itself when the encoder is injective on the support of the data or, more practically, when the estimated effects are read out through probes onto clinical measurements such as interval durations.
+% TODO: add an appendix with proof sketches for Propositions
+% \ref{prop:wm-failure}--\ref{prop:wm-sensitivity}:
+%   Prop. failure     -> law of total expectation, for either route;
+%   Prop. anchored    -> backdoor adjustment on u-hat (event route) + the second
+%                        condition of Ass. sufficiency (recording route) +
+%                        attenuation under misclassification with a
+%                        covariate-dependent kappa_c (projection of the additive
+%                        model onto functions of (h, tau) gives kappa-bar);
+%   Prop. proximal    -> Miao et al. (2018), applied coordinate-wise to r_t;
+%   Prop. sensitivity -> bias bound combined with confidence-interval coverage
+%                        for the unpenalized, cross-fitted psi^2.
+
+\paragraph{Scope.}
+The method recovers the grounded subset of a weak, confounded label set and estimates the effects of grounded codes. It does so under assumptions that are stated explicitly and partially testable through held-out anchors. It does not estimate effects for codes whose assignment is nearly determined by the context; such codes are reported as not identifiable rather than forced into either class. Its conclusions are only as credible as the anchor rule. The rule is therefore documented and frozen before the pre-specified analyses, the codes it selects are assigned to disjoint roles and rotated to estimate residual bias, and both the rule and the codes are reported in full, together with the exploratory analyses that informed its form. Residual associations that no proxy explains are not removed but bounded by the margin.

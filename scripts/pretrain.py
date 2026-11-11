@@ -35,6 +35,28 @@ eval/mse_ratio. Give the run its own checkpoint names:
 python scripts/pretrain.py ++use_actions=false \\
     ++ckpt_path=checkpoints/pretrain_noact_.ckpt ++ckpt_path_auroc=checkpoints/pretrain_noact_auroc_.ckpt
 
+Single-recording objective (go/no-go Phase 0.5a candidate (ii); no same-patient positives)
+-----------------------------------------------------------------------------------------
+++objective=single replaces the pair (Xt, Xt+1) by two augmented views of Xt alone: h1 = Encθ(v1), h2 = Encθ(v2),
+L = (1-λ) * MSE(Dynϕ(h1, Projω(0)), h2) + λ * (SIGReg(H1) + SIGReg(H2)). Data, batches, folds, predictor and λ are
+those of the pair objective, so a run differs from a use_actions=false pair run only in the objective. Views
+(_single_views, SINGLE_AUG): a zero-padded time shift of up to ±0.5 s, one global amplitude factor for all leads in
+[0.95, 1.05], Gaussian noise at 5% of each lead's SD, and one zeroed 0.5 s window; no time stretch or resampling
+(the encoder must not become invariant to heart rate or voltage); validation views are seeded from the
+batch content, so val/loss is comparable across epochs. Requires use_actions=false. Phase 0.5a run:
+python scripts/pretrain.py ++backbone=vit1d ++use_actions=false ++objective=single ++decoy_probe_decoys=0 \\
+    ++ckpt_path=checkpoints/pretrain_single.ckpt ++ckpt_path_auroc=checkpoints/pretrain_single_auroc.ckpt
+
+Intra-recording objective (go/no-go Phase 0.5a retrain, plan revision 9)
+-------------------------------------------------------------------------
+++objective=intra predicts the embedding of one part of a recording from a disjoint part of the same recording,
+I-JEPA style with dropped patch tokens (_intra_patches, INTRA, ViT1d.forward_kept): the target is a random contiguous
+window of 80 patches (4 s) and the context every patch outside it and outside 4 patches (0.2 s) on each side.
+h1 = Encθ(context tokens only), h2 = Encθ(target tokens only), each kept token at its own RoPE position, and
+L = (1-λ) * MSE(Dynϕ(h1, Projω(0)), h2) + λ * (SIGReg(H1) + SIGReg(H2)): the reference objective with its target
+changed from Xt+1 to a disjoint window of Xt. The full-token input used at export is a superset of the training
+inputs, not a zero-filled one. Requires use_actions=false and backbone=vit1d. Run: gorgonoid/dynamics_intra.sbatch.
+
 Resuming an interrupted run
 ----------------------------
 python scripts/pretrain.py \\
@@ -223,9 +245,66 @@ def _make_loader(ds: Dataset, batch_size: int, num_workers: int, shuffle: bool) 
     )
 
 
+# Views for objective=single (samples at 500 Hz, fractions). SIGReg with a view-prediction loss learns invariance to
+# whatever the views vary, and amplitude and rate are part of the signal here (QRS voltage, heart rate), so the views
+# vary them as little as possible: one global amplitude factor for all leads within ±5% (not per lead, so lead ratios
+# and the axis are untouched), a time shift of up to ±0.5 s, Gaussian noise at 5% of each lead's SD, one 0.5 s mask,
+# and no time stretch or resampling, which would make the encoder invariant to heart rate. Changed 2026-11-03 from
+# scale 0.2; runs made before the change (runs/runs/20261103/152348, 152904) used ±20% and are invalid.
+SINGLE_AUG = {"shift": 250, "scale": 0.05, "noise": 0.05, "mask": 250}
+# objective=intra (go/no-go 0.5a retrain, plan revision 9): predict the embedding of one part of a recording from a
+# disjoint part of the same recording, I-JEPA style with dropped patch tokens. In patches of the ViT (25 samples =
+# 50 ms at 500 Hz): an 80-patch (4 s) target window and a 4-patch (0.2 s) gap on each side that neither view sees.
+# No amplitude, noise or shift augmentation.
+INTRA = {"target_patches": 80, "gap_patches": 4}
+
+
+def _single_views(x, aug, generator=None):
+    """One augmented view per recording of x (B, 12, T): zero-padded time shift, global amplitude factor, Gaussian
+    noise relative to each lead's SD, and one zeroed window. Independent per recording."""
+    B, L, T = x.shape
+    dev = x.device
+    r = lambda *s: torch.rand(*s, device=dev, generator=generator)
+    shift = ((r(B) * 2 - 1) * aug["shift"]).round().long()                       # (B,)
+    src = torch.arange(T, device=dev).unsqueeze(0) - shift.unsqueeze(1)           # (B, T)
+    valid = ((src >= 0) & (src < T)).unsqueeze(1)
+    v = torch.gather(x, 2, src.clamp(0, T - 1).unsqueeze(1).expand(B, L, T)) * valid
+    v = v * (1 + (r(B, 1, 1) * 2 - 1) * aug["scale"])
+    v = v + torch.randn(v.shape, device=dev, generator=generator) * aug["noise"] * x.std(dim=2, keepdim=True)
+    if aug["mask"] > 0:
+        start = (r(B) * (T - aug["mask"])).long().unsqueeze(1)                    # (B, 1)
+        t = torch.arange(T, device=dev).unsqueeze(0)
+        v = v * ~((t >= start) & (t < start + aug["mask"])).unsqueeze(1)
+    return v
+
+
+def _intra_patches(B, n_patches, cfg, device, generator=None):
+    """Patch indices of the context and the target of each of B recordings of n_patches tokens, I-JEPA style: the
+    target is one random contiguous window of cfg['target_patches'] patches; the context is every patch outside that
+    window and outside cfg['gap_patches'] patches on each side of it. The window starts where both gaps fit, so every
+    row has the same number of context tokens (n - target - 2 gap) and target tokens. Returns (ctx (B, Kc), tgt (B, Kt)),
+    each in increasing order; the two share no patch and no boundary."""
+    tp, gp = cfg["target_patches"], cfg["gap_patches"]
+    hi = n_patches - tp - 2 * gp + 1                                              # number of admissible starts
+    start = gp + (torch.rand(B, device=device, generator=generator) * hi).long().unsqueeze(1)
+    t = torch.arange(n_patches, device=device).expand(B, n_patches)
+    target = (t >= start) & (t < start + tp)
+    seen_by_neither = (t >= start - gp) & (t < start + tp + gp)
+    return t[~seen_by_neither].view(B, n_patches - tp - 2 * gp), t[target].view(B, tp)
+
+
 @hydra.main(version_base="1.3", config_path="../configs", config_name="pretrain")
 def main(cfg):
     pair_types = tuple(cfg.pair_types)
+    objective = cfg.get("objective", "pair")
+    assert objective in ("pair", "single", "intra"), objective
+    assert objective == "pair" or not cfg.use_actions, f"objective={objective} requires use_actions=false"
+    single_aug = {**SINGLE_AUG, **dict(cfg.get("single_aug", {}) or {})}
+    intra_cfg = {**INTRA, **dict(cfg.get("intra", {}) or {})}
+    if objective == "intra":
+        assert cfg.backbone == "vit1d", "objective=intra drops patch tokens, which needs backbone=vit1d"
+        assert intra_cfg["target_patches"] * cfg.vit.patch_size == 2000 and intra_cfg["gap_patches"] * cfg.vit.patch_size == 100, \
+            "intra windows are meant to be 4 s (2000 samples) and 0.2 s (100 samples) at 500 Hz"
 
     # Train: longitudinal pairs (Xt, Xt+1, yt, at)
     train_ds = MIMICLanceDataset(
@@ -273,9 +352,25 @@ def main(cfg):
         if not cfg.use_actions:
             # Ablation without actions: Projω(0) is a learned constant, so ht1_hat depends on ht alone
             at = torch.zeros_like(at)
+        x_clean = xt
+        if objective in ("single", "intra"):
+            # No same-patient positives: the target comes from the same recording, never from Xt+1
+            g = None
+            if not is_train:   # deterministic validation views, seeded from the batch content
+                g = torch.Generator(device=xt.device)
+                g.manual_seed(int(xt[:, 0, :64].float().abs().sum().item() * 1e3) % (2 ** 31))
+            if objective == "single":
+                xt, xt1 = _single_views(xt, single_aug, g), _single_views(xt, single_aug, g)
 
-        ht      = self.backbone(xt)                          # (B, D)
-        ht1     = self.backbone(xt1)                         # (B, D)
+        if objective == "intra":
+            # I-JEPA style: the context encoder sees only the patches outside the target window and its gaps, the
+            # target is the pooled embedding of the target-window patches alone; dropped tokens, not zero-filled ones
+            ctx, tgt = _intra_patches(xt.shape[0], xt.shape[-1] // cfg.vit.patch_size, intra_cfg, xt.device, g)
+            ht      = self.backbone.forward_kept(xt, ctx)        # (B, D)
+            ht1     = self.backbone.forward_kept(xt, tgt)        # (B, D)
+        else:
+            ht      = self.backbone(xt)                          # (B, D)
+            ht1     = self.backbone(xt1)                         # (B, D)
         at_emb  = self.projector["proj"](at.float())         # (B, D)
         ht1_hat = self.projector["pred"](ht, at_emb)         # (B, D)
 
@@ -292,8 +387,14 @@ def main(cfg):
         if is_train:
             self.log("train/loss_ratio", reg_loss / (pred_loss + 1e-8), on_step=False, on_epoch=True, sync_dist=True)
 
-        # "embedding" + "label" feed the OnlineProbe, "embedding" + "ht1" the _DecoyProbe
-        return {"embedding": ht, "ht1": ht1, "label": yt, "loss": loss}
+        # "embedding" + "label" feed the OnlineProbe, "embedding" + "ht1" the _DecoyProbe. For the single-recording
+        # objectives the probe gets the clean recording's embedding (no gradient), as the pair objective's probe does,
+        # so the online probe stays comparable across objectives (go/no-go plan revision 9, diagnosis Step 1a).
+        embedding = ht
+        if objective in ("single", "intra"):
+            with torch.no_grad():
+                embedding = self.backbone(x_clean)
+        return {"embedding": embedding, "ht1": ht1, "label": yt, "loss": loss}
 
     module = spt.Module(
         backbone=backbone,

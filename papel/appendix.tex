@@ -625,7 +625,7 @@ Dynamics (Standard)               & 0.517 & 0.790 & 0.782 & 0.550 / 0.672 & 0.49
 
 The forward objective conditions $\text{Dyn}_\phi$ on the transition $\va_t$, which is built from the labels. The preceding sections show that $\text{Dyn}_\phi$ does not carry the action's effect over to held-out pairs. This section asks whether the conditioning matters for the encoder at all. We retrain with every action set to $\vec 0$ and compare the finetuned encoders on MIMIC triage classification.
 
-\paragraph{Setup.} We set $\va_t=\vec 0$ for every pair, in training and in validation. Because $\text{Proj}_\omega$ is an MLP with biases, $\text{Proj}_\omega(\vec 0)$ becomes a learned constant that the first layer of $\text{Dyn}_\phi$ absorbs as a bias. The model is therefore $\hat\vh_{t+1}=\text{Dyn}_\phi(\vh_t)$, with the same encoder, predictor capacity, SIGReg term and optimizer, and the first layer of $\text{Proj}_\omega$ receives no gradient. The objective no longer uses labels: it predicts the embedding of the patient's next stay from the current one. On the $k=1$ cross-stay pairs used here, this removes the action from the $51.7\%$ of training pairs that carry one, which change $2.48$ labels on average (Table~\ref{tab:pairing-stats}). On the pooled within- and cross-stay pairs of Dynamics (Standard), only $25.0\%$ of pairs would be affected, since within-stay pairs are almost all stable.
+\paragraph{Setup.} We set $\va_t=\vec 0$ for every pair, in training and in validation. Because $\text{Proj}_\omega$ is an MLP with biases, $\text{Proj}_\omega(\vec 0)$ becomes a learned constant that the first layer of $\text{Dyn}_\phi$ absorbs as a bias. The model is therefore $\hat\vh_{t+1}=\text{Dyn}_\phi(\vh_t)$, with the same encoder, predictor capacity, SIGReg term and optimizer, and the first layer of $\text{Proj}_\omega$ receives no gradient. The objective no longer uses labels: it predicts the embedding of the patient's next stay from the current one. On the $k=1$ cross-stay pairs used here, this removes the action from the $51.7\%$ of training pairs that carry one, which change $2.48$ labels on average (Table~\ref{tab:pairing-stats}).
 
 Both runs use the ViT encoder of Appendix~\ref{sec:cnn-vit} with its $k=1$ recipe: cross-stay pairs, $\lambda=0.05$, weight decay $0.1$, learning rate $10^{-3}$, batch size 1{,}024, predictor width 512, seed 42 and 405 epochs. They differ only in $\va_t$. The action-conditioned run is the ``ViT, $k=1$, 405 epochs'' run of Appendix~\ref{sec:cnn-vit}, and we also include its predictor-width-128 variant as a second action-conditioned run. Each run is read at its highest online linear-probe AUROC on validation, which falls at epoch 370 without actions and at epochs 402 and 403 with them.
 
@@ -644,7 +644,7 @@ Two quantities logged on the 8{,}244 validation pairs during pretraining complem
 \cmidrule(lr){2-4}
 \textbf{Encoder} & \textbf{Probe AUROC} & \textbf{Error ratio} & \textbf{True vs.\ zero} & \textbf{Test macro-AUROC (finetuned)} \\
 \midrule
-ViT, no actions                    & 0.633 & \textbf{0.941} & --    & 0.7391 \small{[0.7266 -- 0.7529]} \\
+ViT, no actions                    & 0.633 & {0.941} & --    & 0.7391 \small{[0.7266 -- 0.7529]} \\
 ViT, actions (matched)             & 0.620 & 0.992          & 0.358 & 0.7409 \small{[0.7273 -- 0.7557]} \\
 ViT, actions, predictor width 128  & 0.642 & 0.957          & 0.376 & 0.7441 \small{[0.7314 -- 0.7575]} \\
 \addlinespace
@@ -660,6 +660,8 @@ Inverse Dynamics, ResNet           & --    & --             & --    & 0.7373 \sm
 The action does not improve prediction on held-out pairs either. Within each action-conditioned model, the zero action predicts $\vh_{t+1}$ better than the true action on most validation pairs with a change, with within-pair AUROCs of $0.358$ and $0.376$. Across models, the action-free one has the lowest error ratio, $0.941$ against $0.992$ for the matched action-conditioned model. This agrees with Appendix~\ref{sec:cnn-vit}, where $\text{Dyn}_\phi$ fits the action effects of its training transitions but these effects do not hold on held-out ones. Nor does the online probe favor the actions: it reads $0.633$ without them and $0.620$ with them, while the predictor-width-128 run reads $0.642$. Its ordering therefore does not follow the conditioning, and it also differs from the finetuned ordering.
 
 The ResNet rows of Table~\ref{tab:no-actions} serve only as orientation. All three ViT encoders fall below Dynamics (Standard) ($0.7500$) and above Inverse Dynamics ($0.7373$), but those two use a ResNet with other pair sets and other $\lambda$. They were also finetuned on all training ECGs, including the 298{,}869 recorded outside any stay, whose labels are all negative. Only the ViT rows compare matched runs.
+
+\paragraph{Summary.} With the ViT encoder on $k=1$ cross-stay pairs, conditioning on the diagnosis transition brings no measurable benefit to the encoder. A label-free predictor of the next stay's embedding gives the same finetuned triage AUROC and, on held-out pairs, predicts its next-stay embedding at least as well. Whatever the forward objective contributes to the encoder therefore comes from predicting the patient's next ECG, not from the labels in $\va_t$. Three caveats apply. Each configuration has one seed and the intervals are per model, so a paired bootstrap on shared test resamples and more seeds would bound the effect more tightly. The ResNet recipe of Dynamics (Standard), in which only $25.0\%$ of training pairs carry an action, has not been ablated. Finally, labels still select the pretraining checkpoint through the online probe, in both arms alike.
 
 \subsection{Posterior Readout and Contrastive Training for Planning}
 \label{sec:posterior-planning}
@@ -727,4 +729,260 @@ With prior decoys, the energy is trained on the same actions the posterior weigh
 
 These results come from heads trained on frozen features in a second stage, not from the end-to-end pretraining objective, with one seed per head and point estimates. The base-rate prior also factorizes over labels. It puts $28.5\%$ of its mass on no change, while $48.8\%$ of the test pairs have none. Two variants remain untested. The first would draw the decoys, and the readout's prior, from a learned $p(\va\mid\vh_t,\vy_t)$. The energy would then have only the outcome to discriminate with, and the readout would separate dynamics evidence from the prior by construction. The second would use CEM's adapted population as the proposal, with importance weights for the prior, to concentrate the samples where the posterior has mass.
 
-\paragraph{Summary.} With the ViT encoder on $k=1$ cross-stay pairs, conditioning on the diagnosis transition brings no measurable benefit to the encoder. A label-free predictor of the next stay's embedding gives the same finetuned triage AUROC and, on held-out pairs, predicts its next-stay embedding at least as well. Whatever the forward objective contributes to the encoder therefore comes from predicting the patient's next ECG, not from the labels in $\va_t$. Three caveats apply. Each configuration has one seed and the intervals are per model, so a paired bootstrap on shared test resamples and more seeds would bound the effect more tightly. The ResNet recipe of Dynamics (Standard), in which only $25.0\%$ of training pairs carry an action, has not been ablated. Finally, labels still select the pretraining checkpoint through the online probe, in both arms alike.
+
+\subsection{Diagnosis Transitions as Weak, Confounded and Partially Grounded Labels}
+\label{sec:gonogo}
+
+The preceding sections converge on one observation. The diagnosis transition $\va_t$ explains almost none of the change between a patient's ECGs, the forward model fits the action effects of its training transitions without transferring them, and pretraining without actions performs as well as pretraining with them (Appendices~\ref{sec:cnn-vit} and~\ref{sec:no-actions}). This section asks why, and whether the answer supports a different use of the labels. It reports the first part of a go/no-go study of one hypothesis: that ICD transitions are not actions but weak, confounded and partially grounded annotations of the transition. All results in this section were computed on a single frozen encoder, together with signal features, and they are provisional until that encoder is checked against an alternative (Appendix~\ref{sec:gonogo-decision}).
+
+\subsubsection{Hypothesis and decision rules}
+\label{sec:gonogo-hypothesis}
+
+\paragraph{Labels as annotations.} We model the label change as an instance-dependent noisy annotation of the transition, $\va_t=g(\text{true transition},\text{patient state},\text{context},\text{noise})$, in which some coordinates have no effect on the signal at all. Three properties follow. The labels are \emph{weak}, because they are recorded after the fact, with omissions, delays and errors. They are \emph{partially grounded}, because many codes describe conditions without an electrophysiological signature. And they can be \emph{confounded}, because codes are assigned within a clinical context, such as an admission or an acute illness, that also changes the ECG. The context can act through two routes. Through the \emph{event route}, it changes which conditions occur; through the \emph{recording route}, it changes which conditions are written down, for example because an admission documents more comorbidities than a visit to the emergency department. Under either route, a code without any route to the ECG still predicts the transition, since it marks a context that does. Any criterion that keeps a code because it improves prediction, including the magnitude of a learned action effect, a sparsity pattern, or a conditional mutual information, then keeps confounded codes for the wrong reason.
+
+\paragraph{Two conditions.} The study requires two conditions before a method built on this hypothesis is developed. Condition C1, the subject of this section, is that confounding of the transition is measurably present in MIMIC-IV-ECG. Condition C2, not yet tested, is that existing world-model baselines declare ungrounded but confounded codes grounded when the confounder is a real one from these data, and increasingly so as confounding grows in a controlled simulation. If either condition fails, the confounding axis is dropped and the project is re-scoped.
+
+\paragraph{Decision rule for C1.} For each code $c$ and each target $\Delta\in\{\Delta\vm,\Delta\vb,\Delta\vh\}$ (defined below), we ask whether the onset $a_{t,c}$ carries information about the change beyond the current state, under three nested conditioning sets: elapsed time only, the observed encounter covariates $\vz_t$, and $\vz_t$ together with the labels of a set of \emph{anchor} codes chosen in advance for having no route to the ECG. Codes fall into the reading of an interpretation matrix. A gain on the signal targets and on $\Delta\vh$ that does not change with conditioning is read as \emph{grounded}. A gain on $\Delta\vh$ alone that disappears under $\vz_t$ is \emph{confounded by observed context}, and one that persists under $\vz_t$ but disappears with the anchors is \emph{confounded by context that the anchors proxy}, the case a deconfounding method is built for. A gain on $\Delta\vh$ that persists under both is either an unobserved confounder or a real effect outside the measured features. For codes without a plausible route to the ECG, it is read as confounding. A gain on the signal targets without one on $\Delta\vh$ means the encoder lost the information. C1 is GO if at least one negative-control or ambiguous code shows a significant gain on $\Delta\vh$ after Benjamini--Hochberg correction, and that gain shrinks substantially under $\vz_t$ or under $\vz_t$ and the anchors. The rule fixes in advance how the conditioning set that removes the gain is read. Removal by $\vz_t$ is observed confounding: conditioning on $\vz_t$ fixes it, and the case for a method then rests on such variables often being unrecorded. Removal only by the anchors is the case the method is built for. The strongest GO combines a residual after $\vz_t$ that the anchors remove with direct evidence for the recording route. C1 is NO-GO if no code outside the positive group beats its placebo on $\Delta\vh$, and inconclusive if the positive controls fail, in which case the representations are fixed and the analysis rerun.
+
+\subsubsection{Data, representations and estimator}
+\label{sec:gonogo-data}
+
+\paragraph{Linkage and pairs.} MIMIC-IV-ECG-Ext-ICD provides, for every ECG, the emergency stay, the admission that stay led to, the admission the ECG was taken in, age, sex, fold and the stay counter used in Appendix~\ref{sec:pairing-appendix}. Joined on the study identifier, it reproduces our ECG table exactly, including subjects, folds, stay counters and acquisition times to the second, and its \texttt{all\_diag\_all} column truncated to three characters reproduces the 76 labels on every ECG. It is therefore the full-chapter version of our labels, which we use for non-cardiac codes below. A stay is the admission when the ECG was taken in hospital, and the emergency stay otherwise. An emergency-only stay is labelled with its emergency discharge codes, and an admission with its hospital discharge codes.
+
+This linkage shows that the cross-stay pairs of Appendix~\ref{sec:pairing-appendix} contain two kinds of pair. In 44{,}684 of the 166{,}229 cross-stay pairs ($26.9\%$), the two stays belong to one episode: an emergency visit and the admission it led to. Both ECGs of such a pair carry the discharge codes of the same admission, so the pair is stable by construction ($100.00\%$ of them are). These pairs make up $99\%$ of the cross-stay pairs recorded less than 12 hours apart and $65\%$ of those 1 to 7 days apart. They are why $48.3\%$ of the cross-stay pairs in Table~\ref{tab:pairing-stats} are stable. We exclude them and use them only as a noise floor. Of the remaining 121{,}545 pairs between episodes, $29.3\%$ are stable, 85{,}906 change at least one code and 30{,}863 change exactly one; 118{,}670 have usable features at both ECGs. We never pair consecutive ECGs regardless of stay. An ECG recorded outside any stay has missing codes, stored as zeros, and such pairs would add 119{,}220 artificial transitions whose presence is decided by the care setting.
+
+The \emph{clean} subset, which is the primary analysis, keeps the stable pairs and the single-code transitions, so that no other cardiac code changes together with the code under test. For a non-cardiac code, its clean analogue keeps the pairs on which no cardiac code changes. The \emph{adjusted} subset keeps every pair at risk for an onset and adds the onset and resolution indicators of all other cardiac codes as covariates. It serves as a sensitivity analysis. A code enters the study if it has at least 250 clean onsets over the 20 patient-stratified folds; 13 of the 76 cardiac codes pass.
+
+\paragraph{Representations and controls.} The study uses three representations, none trained with labels or actions. The representation $\vh$ is the 256-dimensional embedding of the ViT pretrained without actions (Appendix~\ref{sec:no-actions}), read at its checkpoint with the lowest validation loss (epoch 339), which uses no labels. The features $\vb$ are the 39 median-beat features of the signal: heart rate, RR irregularity, a QRS-width proxy, and per-lead QRS amplitude, ST level and T amplitude. The features $\vm$ are 12 measurements of the acquisition cart from \texttt{machine\_measurements}: heart rate, PR, QRS and QT intervals, Bazett-corrected QTc, the three electrical axes as cosine and sine, and an indicator of a missing P wave. Missing values in that file are sentinels, which we treat as missing, with physiologically impossible values discarded. Its acquisition date disagrees with ours for $2.2\%$ of ECGs, by days to decades, so we join on the study identifier only; the measurements nevertheless belong to the right waveforms, since its heart rate correlates with ours at $r=0.98$. The targets are the changes $\Delta\vh$, $\Delta\vb$ and $\Delta\vm$ between the two ECGs of a pair, each dimension standardized. The state is $\vs_t=[\vb_t,\vh_t,\vm_t]$, so that every target's current value, including the heart rate at $t$, is controlled for. The observed encounter covariates $\vz_t$ are the logarithm of the elapsed time, the care setting at $t$ and at $t+1$ (emergency only, emergency then admitted, or inpatient), the coding system in force at each stay, and age and sex. The coding system matters because the labels convert ICD-9 codes to ICD-10, and $9.5\%$ of the pairs straddle the 2015 switch. It is read from the admission's diagnosis records, and for emergency-only stays it is inferred from the patient's admissions around the switch, which leaves $7.2\%$ of pairs with an unknown system. Variables that can be consequences of the transition, such as admission to intensive care, triage acuity or length of stay, are kept out of $\vz_t$.
+
+\paragraph{Codes.} The positive controls are the five conduction and rhythm codes with established ECG signatures: I44 (atrioventricular and left bundle branch block), I45 (other conduction disorders), I47 (paroxysmal tachycardia), I48 (atrial fibrillation and flutter) and I49 (other arrhythmias). Between episodes they have only 129 to 777 clean onsets, so only I47 and I48 reach the threshold of 250. The negative controls and anchors come from the full-chapter labels, and their roles were fixed from label statistics alone, before any gain was computed. Of the 151 non-cardiac codes with at least 250 clean onsets, 117 were excluded, each with a recorded reason. These reasons were electrolytes, fluids or nutrition; drugs with ECG effects; heart rate through fever, anaemia, bleeding or hypoxia; endocrine or cardiovascular risk factors; pulmonary disease; cardiac symptoms, devices or history; the brain; the liver; and nonspecific or external-cause codes. External-cause chapters are excluded in particular because the labels keep ICD-9 history codes whose strings are also valid ICD-10 codes. One further code, do-not-resuscitate status, failed a separation screen. Its onsets raised the odds of a grounded cardiac onset on the same pair, beyond setting, age and sex, by a factor of $1.60$, above the screen's threshold of $1.5$; the median over the retained pool is $1.02$. The remaining 33 codes were split at random, with a fixed seed and within two categories, into three disjoint roles (Table~\ref{tab:gonogo-roles}). The categories separate codes that are also recorded at emergency-only stays from codes recorded essentially only during admissions. The ambiguous codes are the nine non-positive cardiac codes that reach the event threshold, among them essential hypertension (I10), chronic ischaemic heart disease (I25) and heart failure (I50). Two venous codes, I82 and I87, form a secondary set of weak negative controls.
+
+\begin{table}[t]
+\caption{Negative-control roles (Appendix~\ref{sec:gonogo-data}), fixed from label statistics before any gain was computed: a seeded random split, within two recording categories, of the 33 non-cardiac codes with at least 250 clean onsets that passed the exclusion rule and the separation screen. C1 controls test condition C1, anchors enter the conditioning set, and held-out anchors are reserved for estimating residual bias.}
+\label{tab:gonogo-roles}
+\centering
+\small
+\begin{tabular}{@{}lp{0.8\textwidth}@{}}
+\toprule
+\textbf{Role} & \textbf{Codes} \\
+\midrule
+C1 controls & G43 migraine, J06 upper respiratory infection, K21 gastro-oesophageal reflux, K22 other oesophageal disease, K29 gastritis, K57 diverticular disease, K59 constipation, K64 haemorrhoids, K80 gallstones, N40 prostatic hyperplasia, Z96 joint or lens implants \\
+Anchors & B37 candidiasis, E55 vitamin D deficiency, M19 osteoarthritis, M25 joint pain, M81 osteoporosis, N39 urinary tract disorders, R10 abdominal pain, R32 incontinence, R51 headache, Z23 immunization, Z90 acquired absence of organs \\
+Held-out anchors & G89 pain, K83 biliary disease, L03 cellulitis, L89 pressure ulcer, M47 spondylosis, M48 spinal stenosis, M54 back pain, M79 soft-tissue pain, R11 nausea, R33 urinary retention, Z80 family history of cancer \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Estimator.} Two separately trained predictors of the change, one with the onset and one without, differ by about $10^{-4}$ in held-out loss from seed to seed on $\Delta\vb$, even with shared initialization and batches. This exceeds the gains of the smaller positive controls. The primary statistic is therefore a cross-fitted R-learner gain. Let $\hat f$ be a base predictor of the standardized change from $\vs_t$ and the conditioning set: an MLP with two hidden layers, averaged over three seeds, whose fold-$k$ model is fitted on 18 other folds and stopped early on the next one. Let $\hat\pi$ be a cross-fitted logistic propensity for the onset given the same inputs. For each target dimension $j$, the effect $\hat\theta_j^{(-k)}=\sum(a-\hat\pi)(\Delta_j-\hat f_j)\big/\sum(a-\hat\pi)^2$ is fitted on the folds other than $k$, and the gain is the held-out reduction in squared error obtained by adding it,
+$$ G_c=\frac{1}{NJ}\sum_{i=1}^{N}\sum_{j=1}^{J}\Big[\big(\Delta_{ij}-\hat f_j(i)\big)^2-\big(\Delta_{ij}-\hat f_j(i)-(a_i-\hat\pi_i)\,\hat\theta_j^{(-k(i))}\big)^2\Big]. $$
+The correction is close to zero on pairs without an onset, whose propensity is small, much like a per-code channel that is silent when its label does not change. The gain is also doubly robust, since under no association its bias requires both $\hat f$ and $\hat\pi$ to be wrong. Significance comes from a conditional randomization test. We draw 1{,}000 placebo onsets from the propensity at the real prevalence, recompute the gain for each, and take the rank of the real one. The test is exact when the propensity is correct. A permutation test that shuffles onsets within strata of elapsed time, care setting at $t+1$ and age agrees with it on $\Delta\vh$ once $\vz_t$ is conditioned on. With elapsed time as the only control, it is more conservative on $\Delta\vb$ and $\Delta\vm$, because its strata already hold part of $\vz_t$ fixed. The placebo gain has a negative mean, the held-out cost of fitting $\hat\theta$ for a label with no signal, so we report the \emph{excess gain} $\bar G_c=G_c-\mathbb{E}_{\text{placebo}}[G_c]$, in units of $10^{-5}$ of the per-dimension change variance. Zero means as uninformative as a placebo onset. Intervals are patient-level bootstrap intervals (1{,}000 resamples). Ratios between conditioning sets use paired resamples, since the analysis set of a code does not depend on the conditioning. Multiplicity is controlled with Benjamini--Hochberg at $q=0.05$, separately for the positive controls and for the remaining codes, per target and conditioning set. The two-model gain is kept as a secondary statistic. A gain can be significant while its bootstrap interval includes zero. The randomization test conditions on the observed changes and asks whether the onset is associated with them, whereas the bootstrap also carries the sampling variability of the effect's size.
+
+\subsubsection{The recording route}
+\label{sec:gonogo-recording}
+
+Because emergency-only stays are labelled with emergency discharge codes and admissions with hospital discharge codes, the care setting decides which document a label comes from. We measured this route with labels alone, by logistic regression over the pairs between episodes. The outcome was the disappearance of a code present at $t$, or the appearance of an absent one, as a function of the setting at $t+1$, adjusted for the setting at $t$, elapsed time, age, sex and a change of coding system. Intervals are clustered by patient. Chronic cardiac codes usually disappear when the next stay is emergency-only (Table~\ref{tab:gonogo-recording}). Heart failure disappears from $95\%$ of such pairs against $18\%$ when the next stay is an admission, an odds ratio of 95. The rates for chronic ischaemic disease are $90\%$ against $16\%$, and for atrial fibrillation $73\%$ against $13\%$. Much of the label change between stays is therefore a property of the document, not of the patient. The non-cardiac codes show the same pattern more starkly. Those recorded essentially only during admissions disappear at every emergency-only stay (median $100\%$, against $66\%$ at an admission). Acute complaints go the other way, with onsets of abdominal pain and headache 3.7 and 2.6 times as likely into an emergency-only stay. The change of coding system also matters: crossing the 2015 switch raises onsets of atrial fibrillation (odds ratio $1.43$) and heart failure ($1.28$), and it changes onset rates for 20 of the 37 codes examined. The recording route is thus present, and for chronic codes it is close to deterministic. Both of its observed drivers, the setting and the coding system, are part of $\vz_t$.
+
+\begin{table}[t]
+\caption{The recording route (Appendix~\ref{sec:gonogo-recording}), from labels alone, on cross-stay pairs between episodes. Disappearance rate of a code present at $t$, by care setting at $t+1$, and odds ratios (95\% patient-clustered intervals) from logistic regressions adjusted for the setting at $t$, elapsed time, age, sex and a change of coding system. ED: emergency department.}
+\label{tab:gonogo-recording}
+\centering
+\small
+\begin{tabular}{@{}l cc ccc@{}}
+\toprule
+& \multicolumn{2}{c}{\textbf{Disappearance rate}} & \multicolumn{3}{c}{\textbf{Odds ratio}} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-6}
+\textbf{Code} & \textbf{ED-only next} & \textbf{Admission next} & \textbf{Disappearance, ED-only} & \textbf{Onset, ED-only} & \textbf{Onset, ICD-9 $\to$ 10} \\
+\midrule
+I10 hypertension          & $56\%$ & $28\%$ & 3.2 [3.0, 3.4] & 0.75 & 1.06 [0.99, 1.14] \\
+I25 chronic ischaemia     & $90\%$ & $16\%$ & 44 [38, 50]    & 0.09 & 1.06 [0.97, 1.15] \\
+I50 heart failure         & $95\%$ & $18\%$ & 95 [78, 117]   & 0.02 & 1.28 [1.18, 1.38] \\
+I48 atrial fibrillation   & $73\%$ & $13\%$ & 22 [19, 25]    & 0.13 & 1.43 [1.31, 1.56] \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Is the transition confounded?}
+\label{sec:gonogo-c1}
+
+\paragraph{The positive controls pass.} Every positive control shows a significant gain on $\Delta\vm$ or $\Delta\vb$ with the full $\vz_t$ (Table~\ref{tab:gonogo-positive}), which the decision rule requires before anything else is read. The effects are the expected ones. Onsets of I44 and I45 widen the machine QRS duration by $0.91$ and $0.90$ standard deviations of the change, about 9~ms. Onsets of I47 raise the heart rate by $0.57$ standard deviations, about 11~bpm. Onsets of I48 remove the P wave ($+1.39$) and raise the heart rate by 11 to 12~bpm. Onsets of I49 raise the RR irregularity ($+0.88$), which is visible only in $\vb$. On $\Delta\vh$, I44, I45 and I48 are significant ($p=0.001$) and I47 marginally so ($p=0.014$), while I49 is not. The irregular rhythm of I49 is thus measured by the median-beat features and lost by the encoder. Conditioning on $\vz_t$ changes the positive controls' gains by $10\%$ or less, as expected of grounded codes.
+
+\begin{table}[t]
+\caption{Positive controls with the full observed conditioning set $\vz_t$ (Appendix~\ref{sec:gonogo-c1}), clean subset between episodes. Excess gain $\bar G_c\times10^{5}$ with patient-level bootstrap 95\% intervals and randomization-test $p$-values, and the cross-fitted effect on the pre-specified dimension in standard deviations of the change (raw units in parentheses). Clean onsets below 250 do not enter the multiplicity correction.}
+\label{tab:gonogo-positive}
+\centering
+\resizebox{\textwidth}{!}{
+\begin{tabular}{@{}l c cc cc c@{}}
+\toprule
+& & \multicolumn{2}{c}{\textbf{Machine measurements $\Delta\vm$}} & \multicolumn{2}{c}{\textbf{Median beat $\Delta\vb$}} & \textbf{Embedding $\Delta\vh$} \\
+\cmidrule(lr){3-4}\cmidrule(lr){5-6}\cmidrule(lr){7-7}
+\textbf{Code} & \textbf{Onsets} & \textbf{$\bar G_c$ ($p$)} & \textbf{Effect} & \textbf{$\bar G_c$ ($p$)} & \textbf{Effect} & \textbf{$\bar G_c$ ($p$)} \\
+\midrule
+I44 & 185 & 68.3 [33.0, 103.9] (0.001) & QRS $+0.91$ ($+9.4$ ms) & 9.8 [$-$3.4, 25.2] (0.002) & QRS width $+0.33$ ($+8.4$ ms) & 3.9 [$-$0.5, 8.8] (0.001) \\
+I45 & 204 & 80.0 [46.5, 116.1] (0.001) & QRS $+0.90$ ($+9.3$ ms) & 0.3 [$-$6.4, 7.2] (0.36) & QRS width $+0.19$ ($+4.8$ ms) & 4.1 [$-$0.9, 9.6] (0.001) \\
+I47 & 302 & 47.0 [21.7, 75.2] (0.001) & HR $+0.57$ ($+11.3$ bpm) & 48.6 [22.4, 74.7] (0.001) & HR $+0.57$ ($+11.5$ bpm) & 1.7 [$-$1.0, 4.3] (0.014) \\
+I48 & 777 & 472.5 [358.7, 584.7] (0.001) & P absent $+1.39$, HR $+0.59$ & 143.4 [99.0, 187.5] (0.001) & RR irreg.\ $+0.71$, HR $+0.64$ ($+12.3$ bpm) & 5.7 [2.2, 9.2] (0.001) \\
+I49 & 129 & $-$1.7 [$-$6.5, 3.1] (0.90) & HR $-0.07$ & 6.5 [$-$3.3, 17.0] (0.002) & RR irreg.\ $+0.88$ & 0.5 [$-$2.2, 3.0] (0.22) \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\paragraph{Codes without a route to the ECG carry information, and $\vz_t$ removes much of it.} With elapsed time as the only control, eight codes outside the positive group have significant gains on $\Delta\vh$ (Table~\ref{tab:gonogo-c1}). Five are ambiguous: I10, I25, I50, hypotension (I95) and oesophageal varices (I85). Three are C1 controls, for which a real ECG effect is implausible: migraine (G43), constipation (K59) and gallstones (K80). On $\Delta\vb$, several further C1 controls carry information, among them gastro-oesophageal reflux (K21), prostatic hyperplasia (N40), other oesophageal disease (K22) and upper respiratory infection (J06). The full $\vz_t$ removes $35$--$40\%$ of the $\Delta\vh$ gain of I10, I25, G43 and K59, and migraine loses significance. It removes $56$--$69\%$ of the $\Delta\vb$ gain of K21, K59, N40, pulmonary hypertension (I27) and I95, all of which lose significance. The positive controls lose at most $10\%$. The eleven anchors change no gain beyond $\vz_t$, with ratios of $0.84$ to $1.06$ for the significant codes, and they raise the propensity's AUROC by at most $0.02$. The adjusted subset, with 3 to 12 times more onsets, reproduces the pattern. With elapsed time alone, 11 non-positive codes have significant $\Delta\vh$ gains. $\vz_t$ removes $8$--$26\%$ of them for ambiguous codes and $32$--$74\%$ for the three C1 controls among them (migraine, constipation and implants), and the anchors again add nothing, with ratios of $0.91$--$1.06$ for the codes still significant after $\vz_t$. The residual of constipation persists: $0.7$ $[0.0, 1.3]$ after $\vz_t$ and $0.6$ $[-0.1, 1.3]$ with the anchors, both significant, against $1.1$ with elapsed time. The gallstone residual does not replicate in this subset. The secondary two-model gain, tested with 100 stratified permutations, agrees after $\vz_t$: it has $p$-values of $0.01$ to $0.05$ for I50 ($0.01$), I85 ($0.02$), K59 and K80 ($0.04$) and I95 ($0.05$), and is not significant for I10, I25 or G43. With 100 permutations, the smallest attainable $q$ is $0.08$, so these do not survive correction.
+
+\begin{table}[t]
+\caption{Gains under nested conditioning sets (Appendix~\ref{sec:gonogo-c1}), clean subset between episodes. Excess gain $\bar G_c\times10^{5}$ with patient-level bootstrap 95\% intervals; $^*$ marks significance by the randomization test after Benjamini--Hochberg correction within the positive controls or within the remaining codes. Anchors: the 11 anchor codes of Table~\ref{tab:gonogo-roles}, as onset and resolution indicators.}
+\label{tab:gonogo-c1}
+\centering
+\resizebox{\textwidth}{!}{
+\begin{tabular}{@{}ll ccc cc@{}}
+\toprule
+& & \multicolumn{3}{c}{\textbf{Embedding $\Delta\vh$}} & \multicolumn{2}{c}{\textbf{Median beat $\Delta\vb$}} \\
+\cmidrule(lr){3-5}\cmidrule(lr){6-7}
+\textbf{Code} & \textbf{Group} & \textbf{Elapsed time} & \textbf{$\vz_t$} & \textbf{$\vz_t$ + anchors} & \textbf{Elapsed time} & \textbf{$\vz_t$} \\
+\midrule
+I10 & ambiguous & 6.1 [2.5, 9.7]$^*$ & 4.0 [0.7, 7.2]$^*$ & 4.0 [0.7, 7.2]$^*$ & 2.9 [$-$2.6, 8.3]$^*$ & 2.8 [$-$2.6, 8.8] \\
+I25 & ambiguous & 3.4 [0.7, 6.2]$^*$ & 2.1 [$-$0.4, 4.5]$^*$ & 2.2 [$-$0.3, 4.8]$^*$ & 0.8 [$-$3.0, 4.5] & 1.0 [$-$2.4, 4.5] \\
+I50 & ambiguous & 3.1 [0.3, 5.7]$^*$ & 2.5 [$-$0.2, 5.1]$^*$ & 2.3 [$-$0.4, 4.8]$^*$ & 26.4 [10.3, 42.7]$^*$ & 20.9 [6.1, 35.7]$^*$ \\
+I85 & ambiguous & 3.0 [$-$0.1, 6.2]$^*$ & 3.5 [0.5, 6.8]$^*$ & 3.5 [0.5, 6.7]$^*$ & 1.1 [$-$0.4, 2.6] & 1.8 [0.1, 3.7] \\
+I95 & ambiguous & 2.3 [$-$0.2, 4.8]$^*$ & 1.8 [$-$0.4, 4.1]$^*$ & 1.8 [$-$0.5, 4.0]$^*$ & 8.0 [0.0, 15.6]$^*$ & 2.7 [$-$1.8, 6.9] \\
+I27 & ambiguous & 0.3 [$-$1.6, 2.2] & 0.3 [$-$1.5, 2.1] & 0.5 [$-$1.4, 2.3] & 3.4 [$-$2.3, 9.4]$^*$ & 1.5 [$-$3.0, 6.0] \\
+\addlinespace
+G43 & C1 control & 2.5 [$-$0.1, 5.0]$^*$ & 1.6 [$-$0.8, 4.1] & 1.4 [$-$1.1, 4.0] & 1.2 [$-$2.2, 4.4] & 0.7 [$-$2.7, 4.1] \\
+K59 & C1 control & 2.9 [0.2, 5.5]$^*$ & 1.9 [$-$0.5, 4.1]$^*$ & 1.9 [$-$0.4, 4.2]$^*$ & 3.9 [$-$1.5, 8.9]$^*$ & 1.2 [$-$2.2, 4.6] \\
+K80 & C1 control & 2.1 [$-$0.1, 4.4]$^*$ & 1.9 [$-$0.3, 4.2]$^*$ & 1.9 [$-$0.2, 4.2]$^*$ & $-$0.1 [$-$2.9, 2.5] & $-$0.6 [$-$2.5, 1.1] \\
+K21 & C1 control & 1.3 [$-$1.4, 3.7] & $-$0.4 [$-$2.4, 1.6] & $-$0.4 [$-$2.4, 1.4] & 4.0 [$-$1.5, 9.1]$^*$ & 1.3 [$-$2.2, 4.6] \\
+N40 & C1 control & 0.3 [$-$1.9, 2.5] & $-$0.5 [$-$2.2, 1.2] & $-$0.4 [$-$2.1, 1.3] & 6.5 [0.4, 12.6]$^*$ & 2.7 [$-$2.7, 9.0] \\
+K22 & C1 control & $-$0.2 [$-$2.2, 1.7] & 0.0 [$-$2.0, 2.0] & 0.2 [$-$1.8, 2.2] & 9.3 [$-$0.4, 18.5]$^*$ & 4.7 [$-$2.0, 11.4]$^*$ \\
+J06 & C1 control & 0.2 [$-$1.5, 1.9] & 0.3 [$-$1.5, 2.0] & 0.2 [$-$1.6, 1.8] & 6.5 [0.5, 12.8]$^*$ & 5.8 [0.0, 11.6]$^*$ \\
+\addlinespace
+I48 & positive & 6.3 [2.7, 10.1]$^*$ & 5.7 [2.2, 9.2]$^*$ & 5.6 [2.1, 9.1]$^*$ & 157.7 [111.9, 202.0]$^*$ & 143.4 [99.0, 187.5]$^*$ \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\paragraph{What $\vz_t$ removes: age and the care setting.} To find which observed variable does the removing, we dropped each part of $\vz_t$ in turn and measured the share of the removal that came back (Table~\ref{tab:gonogo-drivers}). Two drivers emerge. For I10 and I25 on $\Delta\vh$ and for I50 on $\Delta\vb$, it is age and sex, with shares of $0.75$ to $0.92$. These are patient characteristics, which the embedding encodes only in part. For reflux and constipation on $\Delta\vh$, and for oesophageal disease, hypotension and pulmonary hypertension on $\Delta\vb$, it is the care setting at $t+1$, with shares of $0.35$ to $0.70$. The setting decides both which document writes the codes and how ill the patient is when the second ECG is recorded.
+
+\begin{table}[t]
+\caption{Drivers of the removal by $\vz_t$ (Appendix~\ref{sec:gonogo-c1}). The removal is $\bar G_c$ with elapsed time only minus $\bar G_c$ with $\vz_t$. A variable's share is the fraction of that removal recovered when the variable alone is dropped from $\vz_t$. Codes whose removal has an interval including zero are omitted. Patient-level bootstrap 95\% intervals.}
+\label{tab:gonogo-drivers}
+\centering
+\small
+\begin{tabular}{@{}ll cccl@{}}
+\toprule
+\textbf{Target} & \textbf{Code} & \textbf{Removal by $\vz_t$} & \textbf{Share, age and sex} & \textbf{Share, setting at $t+1$} & \textbf{Driver} \\
+\midrule
+$\Delta\vh$ & I10 & 2.1 [0.8, 3.5] & 0.92 [0.55, 1.76] & $-$0.15 [$-$0.85, 0.10] & age and sex \\
+$\Delta\vh$ & I25 & 1.4 [0.4, 2.3] & 0.75 [0.40, 1.69] & 0.23 [$-$0.33, 0.60] & age and sex \\
+$\Delta\vh$ & K21 & 1.7 [0.3, 3.0] & 0.26 [$-$0.09, 0.77] & 0.65 [0.17, 1.02] & setting \\
+$\Delta\vh$ & K59 & 1.0 [0.2, 1.8] & 0.30 [$-$0.12, 0.99] & 0.60 [0.19, 1.47] & setting \\
+$\Delta\vb$ & I50 & 5.5 [1.1, 9.8] & 0.77 [0.26, 2.59] & 0.49 [0.10, 1.34] & both \\
+$\Delta\vb$ & I95 & 5.3 [1.2, 9.1] & 0.02 [$-$0.25, 0.14] & 0.40 [0.11, 0.57] & setting \\
+$\Delta\vb$ & K22 & 4.6 [1.3, 7.6] & 0.00 [$-$0.26, 0.18] & 0.70 [0.42, 1.12] & setting \\
+$\Delta\vb$ & I27 & 2.0 [0.1, 4.0] & 0.33 [$-$0.18, 1.50] & 0.35 [$-$0.64, 0.91] & setting (weak) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Can the label vector stand in for the context?}
+\label{sec:gonogo-labels}
+
+The eleven anchors add nothing beyond $\vz_t$. This leaves two questions. The first is whether a larger set of codes could remove what $\vz_t$ leaves. The second is whether labels could replace $\vz_t$ when it is not recorded, which is the situation a deconfounding method would face.
+
+\paragraph{Upper bound for label-based deconfounding.} We took every non-cardiac code with at least 200 transitions in the training folds, 505 in all, and split them by a documented rule into two sets. Set R holds the 297 codes with a plausible route to the ECG, each with a reason, such as electrolyte disorders, thyroid disease, kidney failure, sepsis, chronic lung disease, anaemia, drugs and cardiac history. Set A holds the remaining 208, which have no plausible route. A includes all 33 codes of Table~\ref{tab:gonogo-roles}. We then added the onset and resolution indicators of R, of A, or of both to $\vz_t$, always excluding the code under test, and measured the fraction of the gain left after $\vz_t$ that each set removes (Table~\ref{tab:gonogo-labelsets}). Set A removes nothing, with fractions between $-0.07$ and $0.18$, all of whose intervals include zero. Set R removes part of the residual for some codes: $0.35$ $[0.07, 1.28]$ for I85 on $\Delta\vh$ and $0.42$ $[0.23, 0.91]$ for I50 on $\Delta\vb$. Under R, constipation also loses significance (from $1.9$ to $1.3$), although that fraction's interval is wide. But R also removes $18$ to $22\%$ of the positive controls' effects, which are real. Conditioning on codes that have their own route to the ECG thus absorbs part of genuine effects, through mediators or co-consequences such as anticoagulation after atrial fibrillation. From these data, that over-adjustment cannot be told apart from confounding by those conditions.
+
+\begin{table}[t]
+\caption{Upper bound for label-based deconfounding (Appendix~\ref{sec:gonogo-labels}). Excess gain $\bar G_c\times10^{5}$ after $\vz_t$, and the fraction of it removed by adding the transitions of the ECG-route codes R (297 codes), of the no-route codes A (208 codes), or of both. Paired patient-level bootstrap 95\% intervals; $^\dagger$ marks a fraction whose denominator's interval includes zero.}
+\label{tab:gonogo-labelsets}
+\centering
+\small
+\begin{tabular}{@{}ll c ccc@{}}
+\toprule
+\textbf{Code} & \textbf{Target} & \textbf{$\bar G_c$ after $\vz_t$} & \textbf{Removed by R} & \textbf{Removed by A} & \textbf{Removed by R and A} \\
+\midrule
+I10 & $\Delta\vh$ & 4.0 [0.7, 7.2] & 0.03 [$-$0.54, 0.50] & $-$0.02 [$-$0.24, 0.15] & 0.15 [$-$0.29, 0.73] \\
+I25 & $\Delta\vh$ & 2.1 [$-$0.4, 4.5] & 0.23 [$-$0.46, 1.27]$^\dagger$ & $-$0.07 [$-$0.54, 0.22]$^\dagger$ & 0.20 [$-$0.42, 1.30]$^\dagger$ \\
+I50 & $\Delta\vh$ & 2.5 [$-$0.2, 5.1] & 0.38 [$-$0.79, 1.44]$^\dagger$ & 0.02 [$-$0.23, 0.24]$^\dagger$ & 0.31 [$-$0.51, 1.22]$^\dagger$ \\
+I85 & $\Delta\vh$ & 3.5 [0.5, 6.8] & 0.35 [0.07, 1.28] & 0.08 [$-$0.02, 0.35] & 0.37 [0.07, 1.35] \\
+I95 & $\Delta\vh$ & 1.8 [$-$0.4, 4.1] & 0.30 [$-$1.34, 2.38]$^\dagger$ & 0.04 [$-$0.38, 0.83]$^\dagger$ & 0.24 [$-$1.19, 1.90]$^\dagger$ \\
+K59 & $\Delta\vh$ & 1.9 [$-$0.5, 4.1] & 0.30 [$-$1.88, 1.51]$^\dagger$ & 0.15 [$-$1.01, 1.22]$^\dagger$ & 0.29 [$-$1.52, 1.62]$^\dagger$ \\
+K80 & $\Delta\vh$ & 1.9 [$-$0.3, 4.2] & 0.06 [$-$0.52, 0.57]$^\dagger$ & 0.01 [$-$0.38, 0.36]$^\dagger$ & 0.06 [$-$0.55, 0.66]$^\dagger$ \\
+I50 & $\Delta\vb$ & 20.9 [6.1, 35.7] & 0.42 [0.23, 0.91] & 0.03 [$-$0.12, 0.18] & 0.39 [0.18, 0.87] \\
+J06 & $\Delta\vb$ & 5.8 [0.0, 11.6] & 0.10 [$-$0.28, 0.57] & 0.18 [$-$0.09, 0.69] & 0.19 [$-$0.18, 0.74] \\
+\addlinespace
+I48 (positive) & $\Delta\vh$ & 5.7 [2.2, 9.2] & 0.18 [0.06, 0.42] & $-$0.01 [$-$0.11, 0.07] & 0.22 [0.09, 0.50] \\
+I48 (positive) & $\Delta\vb$ & 143.4 [99.0, 187.5] & 0.22 [0.16, 0.30] & 0.02 [$-$0.02, 0.06] & 0.21 [0.14, 0.29] \\
+I47 (positive) & $\Delta\vb$ & 48.6 [22.4, 74.7] & 0.19 [0.08, 0.35] & 0.06 [$-$0.02, 0.15] & 0.22 [0.10, 0.40] \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Labels as a substitute for missing metadata.} When the observed covariates are withheld instead of present, the picture changes (Table~\ref{tab:gonogo-substitute}). For each code whose gain $\vz_t$ reduces, we withheld the setting at $t+1$, age and sex, or all of $\vz_t$. We then measured which fraction of the lost removal is recovered by adding either the eleven anchors or the full no-route set A. For the codes driven by the setting, A recovers a substantial share of what the setting removes. The primary reading withholds only the setting at $t+1$, and there A recovers $0.42$ to $1.30$ of the removal, with intervals excluding zero for two of the five codes, hypotension and oesophageal disease. When all of $\vz_t$ is withheld, it recovers $0.68$ to $1.00$, with intervals excluding zero for all five, but that reading also withholds age and sex, which no label set recovers. The eleven anchors recover a third to two thirds of $\vz_t$'s removal for three codes on $\Delta\vb$, and nothing on $\Delta\vh$. Neither set recovers what age and sex remove. Those variables are always recorded, however, whereas the setting and the provenance of a label are what a dataset may lack. The label vector therefore carries the provenance of the labels, and only a broad set of codes recovers it, not a short list. A provenance check is needed to tell whether it carries more than provenance (Appendix~\ref{sec:gonogo-decision}).
+
+\begin{table}[t]
+\caption{Labels as a substitute for withheld metadata (Appendix~\ref{sec:gonogo-labels}). The removal is $\bar G_c$ with the variable withheld from $\vz_t$ minus $\bar G_c$ with the full $\vz_t$ (for ``all of $\vz_t$'', $\bar G_c$ with elapsed time only). The last two columns give the fraction of that removal recovered by adding the 11 anchors or the 208 no-route codes A while the variable is withheld. Rows are those whose removal has an interval excluding zero. Paired patient-level bootstrap 95\% intervals.}
+\label{tab:gonogo-substitute}
+\centering
+\small
+\begin{tabular}{@{}lll ccc@{}}
+\toprule
+\textbf{Code} & \textbf{Target} & \textbf{Withheld} & \textbf{Removal} & \textbf{11 anchors recover} & \textbf{Set A recovers} \\
+\midrule
+I10 & $\Delta\vh$ & age and sex & 1.94 [0.93, 2.92] & 0.07 [$-$0.16, 0.30] & 0.07 [$-$0.27, 0.41] \\
+I25 & $\Delta\vh$ & age and sex & 1.03 [0.44, 1.66] & $-$0.03 [$-$0.40, 0.24] & 0.00 [$-$0.46, 0.45] \\
+G43 & $\Delta\vh$ & age and sex & 0.87 [0.03, 1.70] & 0.14 [$-$0.31, 0.91] & $-$0.07 [$-$1.53, 0.76] \\
+I50 & $\Delta\vb$ & age and sex & 4.21 [1.34, 7.02] & 0.45 [$-$0.04, 1.16] & 0.37 [$-$0.44, 1.35] \\
+\addlinespace
+K21 & $\Delta\vh$ & setting at $t+1$ & 1.07 [0.06, 2.05] & 0.28 [$-$0.06, 1.32] & 0.73 [$-$0.05, 2.63] \\
+K59 & $\Delta\vh$ & setting at $t+1$ & 0.61 [0.11, 1.14] & 0.01 [$-$0.79, 0.65] & 1.02 [$-$0.08, 3.49] \\
+I50 & $\Delta\vb$ & setting at $t+1$ & 2.70 [0.47, 5.17] & 0.44 [$-$0.49, 1.60] & 0.42 [$-$1.24, 2.16] \\
+I95 & $\Delta\vb$ & setting at $t+1$ & 2.12 [0.11, 4.05] & 0.50 [0.05, 1.29] & 1.30 [0.38, 2.83] \\
+K22 & $\Delta\vb$ & setting at $t+1$ & 3.21 [0.98, 5.58] & 0.30 [$-$0.12, 0.69] & 0.69 [0.03, 1.42] \\
+\addlinespace
+I10 & $\Delta\vh$ & all of $\vz_t$ & 2.11 [0.82, 3.47] & 0.06 [$-$0.19, 0.37] & 0.17 [$-$0.27, 0.56] \\
+I25 & $\Delta\vh$ & all of $\vz_t$ & 1.37 [0.44, 2.31] & 0.02 [$-$0.29, 0.26] & 0.19 [$-$0.19, 0.56] \\
+K21 & $\Delta\vh$ & all of $\vz_t$ & 1.66 [0.29, 2.98] & 0.19 [$-$0.08, 0.64] & 0.68 [0.28, 1.95] \\
+K59 & $\Delta\vh$ & all of $\vz_t$ & 1.02 [0.21, 1.85] & 0.09 [$-$0.63, 0.48] & 0.80 [0.16, 2.34] \\
+I50 & $\Delta\vb$ & all of $\vz_t$ & 5.49 [1.12, 9.79] & 0.70 [0.31, 2.50] & 0.88 [0.34, 3.40] \\
+I95 & $\Delta\vb$ & all of $\vz_t$ & 5.27 [1.23, 9.12] & 0.34 [0.14, 0.62] & 1.00 [0.68, 1.53] \\
+K22 & $\Delta\vb$ & all of $\vz_t$ & 4.57 [1.33, 7.59] & 0.37 [0.11, 0.77] & 0.79 [0.28, 1.37] \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{The residual of constipation.} Only one residual after $\vz_t$ is robust: that of constipation, which a real ECG effect cannot plausibly explain. It survives both subsets and every label set. We tested two further explanations (Table~\ref{tab:gonogo-residual}). The first is a co-occurring physiological cause. Within 24 hours of each ECG we measured potassium, magnesium and thyroid-stimulating hormone, and recorded any administration of opioids or laxatives, from the inpatient administration record, prescriptions and emergency dispensing. Potassium was available for $97\%$ of ECGs, magnesium for $73\%$, TSH for $12\%$, and $43\%$ and $53\%$ of ECGs were exposed to opioids and laxatives. These covariates predict constipation strongly, raising its propensity's AUROC from $0.69$ to $0.79$. Yet they remove only $14\%$ of its residual, with an interval including zero, and they leave both K59 and K80 significant. They also remove $12\%$ $[0, 31\%]$ of the effect of atrial fibrillation, consistent with their being partly post-event variables. The second explanation is a misspecified propensity. Replacing the logistic propensity with an MLP or with gradient-boosted trees leaves the residual unchanged, at $1.8$ to $2.0$ for K59 and $1.8$ to $1.9$ for K80. Neither flexible model predicts the onsets as well as the logistic one, so a better propensity was not available to test. Because the estimator is doubly robust, a propensity artefact would also have required a wrong base predictor. The residual therefore remains unexplained.
+
+\begin{table}[t]
+\caption{The residual after $\vz_t$ for constipation (K59) and gallstones (K80), with atrial fibrillation (I48) as a reference (Appendix~\ref{sec:gonogo-labels}). Excess gain $\bar G_c\times10^{5}$ on $\Delta\vh$ with patient-level bootstrap 95\% intervals, and the cross-fitted AUROC of the propensity in parentheses. Left: laboratory and medication covariates within 24 hours of each ECG (potassium, magnesium, TSH, opioids, laxatives), added to $\vz_t$ and to $\vz_t$ with the anchors; the last column is the fraction of the gain after $\vz_t$ that they remove. Right: the gain after $\vz_t$ and the anchors under three propensity models; the MLP run used the anchor indicators standardized with the state, the other two used them as 0/1 columns.}
+\label{tab:gonogo-residual}
+\centering
+\resizebox{\textwidth}{!}{
+\begin{tabular}{@{}l ccc c ccc@{}}
+\toprule
+& \multicolumn{4}{c}{\textbf{Laboratory and medication covariates}} & \multicolumn{3}{c}{\textbf{Propensity model ($\vz_t$ + anchors)}} \\
+\cmidrule(lr){2-5}\cmidrule(lr){6-8}
+\textbf{Code} & \textbf{$\vz_t$} & \textbf{+ covariates} & \textbf{+ anchors + covariates} & \textbf{Removed} & \textbf{Logistic} & \textbf{MLP} & \textbf{Boosted trees} \\
+\midrule
+K59 & 1.9 [$-$0.5, 4.1] (0.69) & 1.6 [$-$0.6, 4.0] (0.79) & 1.6 [$-$0.6, 3.9] (0.80) & 0.14 [$-$0.86, 1.23] & 1.9 [$-$0.4, 4.2] (0.71) & 2.0 [$-$0.4, 4.3] (0.69) & 1.8 [$-$0.6, 4.1] (0.69) \\
+K80 & 1.9 [$-$0.3, 4.2] (0.67) & 1.6 [$-$0.6, 3.8] (0.73) & 1.8 [$-$0.4, 4.1] (0.73) & 0.15 [$-$0.45, 1.30] & 1.9 [$-$0.3, 4.2] (0.67) & 1.8 [$-$0.3, 4.2] (0.64) & 1.8 [$-$0.3, 4.2] (0.64) \\
+I48 & 5.7 [2.2, 9.2] (0.79) & 5.0 [1.7, 8.4] (0.81) & 5.1 [1.6, 8.4] (0.81) & 0.12 [0.00, 0.31] & -- & -- & -- \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\subsubsection{What the representation retains}
+\label{sec:gonogo-representation}
+
+The embedding is the weakest of the three representations for this purpose. We estimated each positive control's effect on $\Delta\vh$ as the vector of cross-fitted effects $\hat\theta$ over the 256 dimensions. The plug-in squared norm of such a vector is biased upward by its estimation noise, so we instead took the inner product of two estimates from disjoint halves of the folds, which share no patients. Only atrial fibrillation's effect vector has a squared norm whose interval excludes zero: $0.69$ $[0.14, 1.29]$ in standardized units. The other controls' intervals include zero (I44 $1.90$ $[-0.56, 4.80]$, I45 $2.41$ $[-0.10, 5.48]$, I47 $0.42$ $[-0.68, 1.56]$, I49 $0.66$ $[-1.73, 2.99]$), and the plug-in norms are 1.6 to 4.8 times larger than these estimates. Atrial fibrillation's gain is about 25 times larger per dimension on $\Delta\vb$ than on $\Delta\vh$ ($143$ against $5.7$). A cross-fitted decomposition of the change between episodes points the same way. The 152 transition indicators of the cardiac codes explain $R^2=0.0002$ of $\Delta\vh$ beyond elapsed time, against $0.0041$ of $\Delta\vb$ and $0.0064$ of $\Delta\vm$. The current state explains $0.13$, $0.25$ and $0.21$, through regression toward the mean. Patient identity accounts for $0.74$ of the variance of $\vh$ itself, but for none of the change. The noise floor is high in every representation. Pairs on which no cardiac code changes move $0.88$ times as much in $\vh$ as the average pair between episodes (changed pairs $1.05$), and same-episode pairs $0.72$ times as much. In $\vb$ the corresponding values are $0.72$, $1.12$ and $0.88$, and within-stay pairs move $1.00$ times as much. These findings are consistent with an encoder that suppresses within-patient change. This is the expected effect of its pretraining objective, which predicts a patient's next recording from the current one and so rewards invariance across that patient's recordings.
+
+\subsubsection{Outcome, limitations and next steps}
+\label{sec:gonogo-decision}
+
+\paragraph{Outcome of C1.} By the decision rule fixed in advance, C1 is GO for confounding by observed context. Codes without a plausible route to the ECG, and ambiguous codes, carry significant information about the transition that the observed covariates partly remove, while the gains of the positive controls do not move. The drivers are age and sex and the care setting at $t+1$, and the recording route behind the second of these is measured directly and is close to deterministic for chronic codes. The strongest form of GO is not reached. No set of codes removes the residual left after $\vz_t$: not the eleven anchors, not the 208 no-route codes, and not laboratory or medication covariates. The 297 route codes weaken it but also absorb part of real effects. The one robust residual, that of constipation, is unexplained. Under the rule's first branch, conditioning on $\vz_t$ fixes the confounding it removes, and the case for a method rests on such variables being unrecorded.
+
+The label-substitution analysis tests that case. When the care setting is withheld, a broad rule-based set of no-route codes recovers a substantial share of what it removes, with point estimates of $0.42$ to $1.30$ and intervals excluding zero for two of five codes, whereas the curated list of eleven anchors does not. The value of label-based deconfounding thus lies where encounter metadata are missing, and it requires many weak proxies rather than a few strong ones. For a deconfounding method, the anchor set should be the full set of codes classified as having no route under a documented rule. Its estimate of the context should be expected to recover provenance and care setting, not the residual. Unexplained residuals should be bounded by a margin estimated from held-out no-route codes rather than assumed away.
+
+\paragraph{Limitations.} All results rest on one frozen encoder, whose objective rewards invariance across a patient's recordings, and the positive-control effects in its embedding are weak. Conclusions about $\Delta\vh$ may change with a representation that keeps more of the within-patient change. The clean subset gives the positive controls only 129 to 777 onsets, so several of their effects are estimated with wide intervals. The randomization test is exact only for a correct propensity, and the logistic model, although the best of the three tried, is not known to be correct. The secondary permutation test used 100 permutations, too few for its results to survive correction. The laboratory and medication covariates may be consequences of the transition, so their small effect on the residual is a bound rather than a test. Each analysis used three seeds of one predictor family. Condition C2 has not been tested.
+
+\paragraph{Next steps.} Three checks precede the test of C2. The first compares the debiased positive-control effect norms, in units of each representation's noise floor, across four candidates: the current embedding, an encoder trained on single recordings without same-patient positives, $\vb$, and the concatenation of $\vh$ and $\vb$. It then repeats the label-set analyses on the best of them. The second asks how well the no-route set alone predicts the care setting at $t+1$, and whether its recovery survives within pairs whose setting does not change. The answer separates provenance from any further context the labels carry. The third estimates the residual-bias margin by rotation over held-out no-route codes, always excluding the code under test, and asks which positive controls clear it. The test of C2 then injects atrial fibrillation's effect vector, the only one estimated reliably, into real pairs, uses the care setting at $t+1$ as the real confounder, and gives every method the real codes, including the no-route set.
