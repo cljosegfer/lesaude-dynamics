@@ -1,5 +1,18 @@
 # Go/No-Go Plan: World Models with Weak, Confounded, Partially Grounded Action Labels
 
+*Revision 15 (12 Nov 2026). Recording only (Section 3, "Revision 15"):*
+- *C2 on b: GO is excluded; Partial vs NO-GO is undetermined with one baseline (0.201 vs 0.2); the rule is unchanged.*
+- *Interpretation: no confounding-specific failure at the real strength on b.*
+- *Latent onsets: baseline 1 γ = 2, Part 1 γ = 4, oracle never.*
+- *Baseline 1's CRT is flagged, not fixed.*
+- *Baselines 2–6 are on hold.*
+
+*Revision 14 (11 Nov 2026). User decisions, recorded before any baseline is run (Section 3, "Revision 14"):*
+- *A secondary C2 metric: a CRT significance threshold on each baseline's score, motivated by the rev-13 decomposition. The primary metric and the C2 rule are unchanged.*
+- *Baseline 1 on b at 1× (γ_mix 1 and 0), with the C2 rule applied as written.*
+- *The latent γ sweep with baseline 1, the Part 1 estimator and the oracle.*
+- *Baselines 2–6 are not run.*
+
 *Revision 13 (11 Nov 2026). User decisions, recorded before running anything (Section 3, "Revision 13"):*
 - *An input-variant decomposition (naive, z − s, z − s + A, oracle) on the γ_mix = 1 and 0.5 sweep draws.*
 - *A semi-synthetic test on h (I48 vector, noise measured on h, Γ̂² from a new rotation on h), with rule (c), the sweep and the decomposition. C2 is still read on b.*
@@ -1251,6 +1264,201 @@ Per-feature readout on Δb, the validation readout. It is the standardized effec
 **3. Risk on the unobserved patient vector p.** The correction (risk on the observed state) is kept for G and U codes. The p-driven version is retained as an exploratory stress scenario, **"patient-substrate confounding"**: reported, never used for C2. Its first results are the invalid run of revision 10 (`outputs/part2/latent/*invalid_risk_on_p*`).
 
 **4. Failure table.** The anchors did not remove K21's false grounding; only the margin did (text corrected above).
+
+### Revision 15 (12 Nov 2026): user decisions, recording only (nothing run)
+
+**1. C2 on b.**
+- **GO is excluded by baseline 1:** its G-vs-U AUROC is 0.865 < 0.9, and its UC false grounding is 0.20 < 0.5.
+- **Partial or NO-GO cannot be told apart with one baseline.** Baseline 1's UC false grounding at γ_mix = 1 is 0.201, against the 0.2 bound. The point estimate is used, as written.
+- **The rule is not changed.**
+
+**2. The Partial branch's interpretation step, recorded descriptively** (3.5: "decide from the effect bias on GC codes and from whether unrecorded contexts are plausibly stronger than the chosen driver").
+- **Baseline 1's γ_mix = 0 floor** under the primary metric is 0.222. Without any confounding, it already places 22% of UC codes (which then follow the U mechanism) above its F1 threshold.
+- **UC minus U at the same γ_mix** (baseline 1):
+
+| γ_mix | Primary: UC − U | CRT: UC − U (liberal on b ⚠) |
+|---|---|---|
+| 0 | 0.222 − 0.188 = +0.03 | 0.042 − 0.097 = −0.06 |
+| 1 | 0.201 − 0.125 = +0.08 | 0.153 − 0.069 = +0.08 |
+
+- **GC bias:** 0.57 (γ_mix = 1) and 0.62 (γ_mix = 0). The effects are attenuated, with no over-attribution under confounding.
+- **Conclusion: there is no confounding-specific failure at the real strength on b.**
+  - Baseline 1's primary rate at γ_mix = 1 does not exceed its own unconfounded floor.
+  - Its UC-minus-U excess is small (+0.08 on both metrics).
+  - The GC effects are not inflated.
+
+**3. Latent sweep: the onset of false grounding** (primary metric, UC rate > 0.2; result 3b).
+- **Baseline 1 at γ = 2** (0.40; 0.92 at γ = 4).
+- **Part 1 estimator at γ = 4** (0.40).
+- **Oracle: never in the grid.**
+- **Note.** The real b confounding corresponds to a weak latent γ. In the semi-synthetic test at γ_mix = 1 (the real driver), the Part 1 estimator's UC false grounding is 0–2% on the margin rule and ≤ 15% on the CRT. That is close to its latent rates at γ ≤ 2 (0–2% and 2–8%), and far below those at γ = 4 (48% and 79%). Baseline 1 does not exceed its own γ_mix = 0 floor on b, as in the latent sweep at γ ≤ 1, where it stays within 0.04 of its γ = 0 rate.
+- So the failures the latent sweep shows begin above the confounding strength observed in MIMIC. By 3.5, this is the NO-GO side's reading ("the problem exists in principle but not at the strength observed in MIMIC"), stated descriptively. The formal C2 outcome stays undetermined between Partial and NO-GO (item 1).
+
+**4. Baseline 1's CRT** (the secondary metric).
+- It is liberal on b (U codes rejected in 0.07–0.10) and unusable in the latent environment (0.58–0.69).
+- It is **not fixed**, and it is flagged in every table that shows it (⚠ on b, ⚠⚠ latent).
+
+**5. Baselines 2–6 are on hold,** pending a decision on the paper's framing.
+
+### Revision 14 (11 Nov 2026): user decisions, recorded before any baseline is run
+
+**1. A secondary C2 metric, pre-declared.**
+- **Definition.** Each baseline's per-code score is thresholded without ground truth: a code counts as grounded when the score is significant (p < 0.05) against a conditional randomization null. Labels are redrawn from the cross-fitted propensity, 500 draws.
+- **Reported under it:** the UC false-grounding rate and the G detection rate.
+- **Motivation, recorded as such.** This metric was motivated by the revision-13 decomposition and is declared before any baseline result.
+- **Unchanged:** the primary C2 metric (the oracle F1 threshold of 3.4) and the C2 rule (3.5).
+
+**2. Baseline 1 on b at 1×.** γ_mix = 1, plus γ_mix = 0 as a sanity check.
+- **Inputs:** the same as the Part 1 estimator: real codes including A, z without setting(t+1).
+- **3 seeds.**
+- **Reported under both metrics:** the UC false-grounding rate, the G-vs-U AUROC and the GC effect bias.
+- **The C2 rule is applied as written.** If this baseline keeps UC false grounding ≤ 0.2 at γ_mix = 1, C2 is recorded as **NO-GO on b**.
+
+**3. The latent γ sweep** (γ = 0, 0.5, 1, 2, 4) with baseline 1, the Part 1 estimator and the oracle. Reported: where false grounding begins for each method.
+
+**4.** The VERIFY marker on `candes2018panning` is removed (Candès, Fan, Janson and Lv, JRSS-B 80(3):551–577, 2018).
+
+**Stop and report. Baselines 2–6 are not run.**
+
+**Operational details** (fixed here, before any baseline result):
+- **Baseline 1 architecture: the workshop head** (`src/models/dynamics.py`).
+  - **Proj_ω** = ActionProjector: Linear(action → 64), ReLU, Linear(64 → 64), ReLU, Linear(64 → 64).
+  - **Dyn_φ** = DynamicsPredictor: Linear(state + 64 → 256), ReLU, one residual block of width 256, Linear(256 → 39).
+  - The workshop used embedding 256 = dim(h) and hidden 512. Here, b's 39 dimensions are paired with embedding 64 and hidden 256 (gain.py's MLP width).
+- **Inputs and target.**
+  - The state input is [b_t, z without setting(t+1)], standardized.
+  - The action vector holds the real codes of A in the workshop convention: one column per code, +1 onset, −1 resolution, 182 columns. It also holds the injected labels of the dataset (0/1).
+  - The target is the change Δb, standardized per dimension (displacement prediction, as in `pretrain_displacement.py`), with MSE loss.
+  - In the latent environment, the state is x_t and the actions are the injected labels; that environment has no z or A.
+- **Training budget.** Adam, lr 1e-3, weight decay 1e-4, batch 1,024 (gain.py's settings), for a **fixed number of epochs**, with no early stopping.
+  - The epoch count is set beforehand by a pilot on the real data without injected codes: real codes only, an 80/20 patient split, the best validation epoch (patience 4, at most 40). It is used for every fit.
+  - A fixed procedure is what makes the observed and null fits exchangeable.
+  - Seeds 0, 1 and 2 for the observed fits; every null fit has its own initialization seed.
+- **Data on b: one multi-label dataset per (draw, γ_mix),** as in 3.1–3.2.
+  - The labels are the rev-12 sweep's saved labels: the draw's 6 G and 6 U codes, plus its 6 UC and 3 GC codes at that γ_mix. All are injected together at 1×.
+  - The noise per code follows the rev-12 procedure, redrawn with seed 1214. c is solved per code on its own Part 1 residuals.
+  - A pair that is an event of several codes receives the sum of their effects and noises.
+  - The Part 1 estimator's results remain those of the single-code sweep (rev 12).
+- **Per-code score: the flip readout.**
+  - δ_c is the mean, over a fixed random subset of 4,096 pairs, of f(x, a with c = 1) − f(x, a with c = 0), mapped back to raw b units. S_c = δ_c′ M δ_c, where M is the Ledoit–Wolf metric of ψ̂².
+  - The GC effect bias is √S_c / √ψ²_true, the same ratio as for the Part 1 estimator.
+- **Primary metric (unchanged, 3.4).** Within each (draw, seed), the threshold maximizing the G-vs-U F1 is applied to S_c.
+  - The UC false-grounding rate is the fraction of UC codes at or above that threshold.
+  - The G-vs-U AUROC is computed per (draw, seed).
+  - Both are averaged over draws and seeds.
+- **Secondary metric (the CRT).** 500 null fits per (draw, γ_mix, seed).
+  - In every null fit, **all** injected labels of the dataset are redrawn together from their cross-fitted propensities (the Part 1 propensity: logistic on [b_t, z without setting(t+1)]). The real codes, the state and z are held fixed.
+  - p_c = (1 + #{S_c in null fits ≥ S_c}) / 501.
+  - A per-code CRT, redrawing only code c, would need 21 × 500 fits per configuration; that does not fit the compute.
+  - **Consequence of the joint redraw.** It is exact under the global null of the injected codes and conservative per code: in the null fits the G effects are no longer explained by their labels, which widens the null. **It understates both G detection and UC false grounding**, and this is stated with every result.
+- **C2 on b.** The rule is read on the primary metric: baseline 1's mean UC false-grounding rate at γ_mix = 1.
+  - **≤ 0.2:** NO-GO, by the rule's "at least one non-oracle baseline".
+  - **Above 0.2:** C2 stays open. GO needs every non-oracle baseline ≥ 0.5, and Partial depends on the best baseline, so neither can be read from one baseline.
+- **Latent γ sweep.**
+  - **Environment:** the b-calibrated environment of `latent.py` at 1× (shrunk vectors), Gaussian noise (rev 11), and the other 3.1 knobs at their first values (ε = 0, ε_u = 0, no delay, calibrated patient share).
+  - **Pool:** per draw, one pool of 35,009 pairs with b's per-patient counts, 20 patient folds and the hidden context u_{t+1} ~ Bernoulli(q).
+  - **Onsets:** onset pairs are sampled from the pool without replacement.
+    - G and U codes: weights exp(α · score(x_t)).
+    - UC and GC codes: weights exp(α · score(x_t) + γ · u_{t+1}), i.e. γ on the logit scale (3.1).
+    - G and GC codes: κ < 1 by u_{t+1} (rev 10 e), with the number of events set so that the expected recorded count matches the code's count.
+  - **Codes per draw:** 8 draws; 6 G and 6 U codes (shared across γ within a draw); 6 UC and 3 GC codes (I47, I48, I49) at each γ.
+  - **Part 1 estimator:** ridge base model and logistic propensity on x_t; ψ̂² on halves, the new interval and the CRT (rev 11–12). **Oracle:** the same, plus u_{t+1}.
+  - **Baseline 1:** state x_t, with all injected labels as actions; same budget; 3 seeds; flip score; CRT with 500 joint redraws.
+  - **Metrics.** For every method: the primary F1-threshold rate and the CRT rate. For the Part 1 estimator and the oracle, also the decision rule (lower bound > Γ̂² = 0.0135).
+  - **"Where false grounding begins":** the smallest γ in the grid at which a method's UC false-grounding rate exceeds 0.2 (C2's tolerance), and the smallest at which it exceeds 0.5. Both are reported per method and metric.
+- **Pilot result** (`outputs/part2/baseline1/pilot.json`; real b data, no injected codes). The best validation epoch is **12** (validation MSE 0.749, standardized), so every baseline-1 fit trains for 12 epochs.
+- **Timing check** (random data of the same shape, no labels): 256 heads × 5 epochs take 7 s. Code: `gonogo/part2/baseline1.py`.
+
+**Revision 14, result 2: baseline 1 on b at 1×, γ_mix = 1** (`outputs/part2/baseline1/semisynth_summary.*`, rows `semisynth/rows_g1.0.csv`). The design is 8 draws × 3 seeds, one multi-label dataset per draw (6 G + 6 U + 6 UC + 3 GC), 12 epochs, 500 null fits per (draw, seed).
+
+| Codes | Primary: above the F1 threshold | Secondary: CRT p < 0.05 [95% CI] ⚠ | Median score S |
+|---|---|---|---|
+| UC | **0.201** (29 of 144) | 0.153 [0.098, 0.222] | 0.0034 |
+| U | 0.125 | 0.069 | 0.0022 |
+| G | 0.868 | 0.667 | 0.044 |
+| GC | 0.917 | 0.847 | 0.239 |
+
+⚠ CRT: liberal on b; U codes are rejected in 0.07–0.10 (joint redraw, not fixed; revision 15).
+
+- **G-vs-U AUROC 0.865** (per seed 0.85–0.89; per draw 0.75–0.99).
+- **GC effect bias:** median 0.57 (10–90% 0.16–0.74); I47 0.70, I48 0.61, I49 0.25. Baseline 1 underestimates the injected effects, so the confounding does not inflate them.
+- **G detection by vector** (primary / CRT): I47, I48 and I49 1.00 / 0.71–1.00; two-feature 0.96 / 0.62; diffuse 0.71 / 0.46; one-feature 0.54 / 0.21.
+
+**The C2 rule as written.**
+- **NO-GO is not triggered by baseline 1.** Its UC false-grounding rate at γ_mix = 1 is 0.201, above the 0.2 bound by one code of 144 (0.2 × 144 = 28.8; observed 29).
+  - The reading is a coin flip. Over the 8 draws (the independent units), the rate has SD 0.21 (per draw 0, 0, 0.06, 0.11, 0.17, 0.28, 0.39, 0.61). A draw-bootstrap 95% interval is [0.08, 0.35], and the bootstrap mean is ≤ 0.2 in 51% of resamples.
+  - The rule uses the point estimate, so it is applied as is.
+- **GO is already excluded by baseline 1, whatever baselines 2–6 do.** GO needs every non-oracle baseline at ≥ 0.5 UC false grounding, with all baselines at AUROC ≥ 0.9. Baseline 1 has 0.20 and 0.865.
+- **C2 on b is therefore Partial or NO-GO.**
+  - It is Partial if no other non-oracle baseline reaches ≤ 0.2 (the best baseline would then lie between 0.2 and 0.5).
+  - It is NO-GO if one does.
+  - It cannot be closed without baselines 2–6, which are not run, as instructed.
+- **The excess over U codes is small.** The F1 threshold places 12.5% of U codes above it, so the confounding-specific excess is 0.08 under the primary metric. Under the CRT it is 0.15 against 0.07.
+
+**Revision 14, result 2b: the γ_mix = 0 sanity check for baseline 1 on b** (`semisynth/rows_g0.0.csv`).
+
+| γ_mix | G-vs-U AUROC | UC: primary / CRT ⚠ [95% CI] | U: primary / CRT ⚠ | G: primary / CRT ⚠ | GC bias, median (10–90%) |
+|---|---|---|---|---|---|
+| 1 | 0.865 | 0.201 / 0.153 [0.098, 0.222] | 0.125 / 0.069 | 0.868 / 0.667 | 0.57 (0.16–0.74) |
+| 0 | 0.875 | **0.222** / 0.042 [0.015, 0.088] | 0.188 / 0.097 | 0.903 / 0.694 | 0.62 (0.30–0.75) |
+
+⚠ CRT: liberal on b; U codes are rejected in 0.07–0.10 (joint redraw, not fixed; revision 15).
+
+- **The primary metric does not move with confounding for baseline 1.**
+  - At γ_mix = 0, UC codes follow exactly the U mechanism, and 22% of them lie above the F1 threshold (per draw 0–0.61; draw-bootstrap [0.11, 0.35]).
+  - That is as much as at γ_mix = 1 (0.20).
+  - So baseline 1's 0.20 at γ_mix = 1 is its null floor under the oracle F1 threshold, set by its weak G/U separation (AUROC 0.87). It is not confounding-driven false grounding.
+- **The CRT (secondary) does move:** UC 0.04 at γ_mix = 0, against 0.15 at γ_mix = 1. U codes stay at 0.07–0.10, close to the nominal 5% given the conservative joint redraw. The confounding is visible to baseline 1 only through a ground-truth-free significance threshold.
+- **Consequence for C2.** The rule as written is still applied: 0.201 > 0.2, so no NO-GO from baseline 1; GO is excluded.
+  - But **the primary metric cannot separate "baseline 1 resists the confounding" from "baseline 1 grounds nothing reliably".** At γ_mix = 0 it already exceeds the 0.2 bound.
+  - The rule's GO branch presupposes baselines with AUROC ≥ 0.9, which baseline 1 does not reach. This is reported, not reinterpreted. Whether C2's NO-GO bound should be read relative to a baseline's own γ_mix = 0 floor is a decision for the user.
+- **GC bias** is the same at both γ_mix values (0.62 vs 0.57). Baseline 1 attenuates effects, and confounding adds no measurable over-attribution.
+
+**Revision 14, result 3a: latent γ sweep, Part 1 estimator and oracle** (`outputs/part2/latent_sweep/summary.*`, rows in `estimators/`). The design is 8 draws × (6 G + 6 U + 6 UC + 3 GC) per γ, at 1×.
+
+| γ | UC false grounding, Part 1: primary / CRT / lower bound > Γ̂² | Oracle: same | G-vs-U AUROC (Part 1 / oracle) | G detected (lower bound > Γ̂²), Part 1 | GC bias, median (Part 1 / oracle) |
+|---|---|---|---|---|---|
+| 0 | 0.02 / 0.06 / 0 | 0.02 / 0.04 / 0 | 0.997 / 0.997 | 0.94 | 1.00 / 0.99 |
+| 0.5 | 0.02 / 0.02 / 0 | 0 / 0.02 / 0 | 0.997 / 0.993 | 0.94 | 0.97 / 0.97 |
+| 1 | 0 / 0.02 / 0 | 0 / 0.02 / 0 | 0.997 / 0.997 | 0.92 | 0.97 / 0.98 |
+| 2 | 0.04 / 0.08 / 0.02 | 0.04 / 0.04 / 0.02 | 0.997 / 0.997 | 0.92 | 0.92 / 0.93 |
+| 4 | **0.40 / 0.79 / 0.48** | 0.02 / 0.08 / 0 | 0.997 / 0.993 | 0.92 | 1.04 / 0.81 |
+
+- **Where false grounding begins.**
+  - **Part 1 estimator: at γ = 4,** under every metric (> 0.2). It passes 0.5 only under the CRT (0.79).
+  - **The oracle never passes 0.2 in the grid.** Its curve is flat (0–8%).
+- **U codes:** at most 0.08 under every metric and γ.
+- **Reading.** In the latent environment, the Part 1 estimator holds up to γ = 2 on the logit scale and fails at γ = 4, where 96% of a UC code's onsets fall in the hidden context. The hidden context shifts the change only slightly there (|β| = 0.17).
+
+**Revision 14, result 3b: latent γ sweep, baseline 1** (complete 12 Nov 22:09; `outputs/part2/latent_sweep/summary.*`, files `baseline1/`). The design is 8 draws × 3 seeds per γ, 12 epochs and 500 joint-redraw null fits; the γ = 4 and 0 rows of the partial version (11 Nov 10:21) are included unchanged.
+
+| γ | UC false grounding: baseline 1 / Part 1 / oracle (primary) | U: baseline 1 (primary) | Baseline 1: G (primary) | Baseline 1: G-vs-U AUROC | Baseline 1: GC bias, median | Baseline 1 CRT ⚠⚠: UC / U |
+|---|---|---|---|---|---|---|
+| 0 | 0.10 / 0.02 / 0.02 | 0.09 | 0.85 | 0.86 | 0.78 | 0.65 / 0.65 |
+| 0.5 | 0.10 / 0.02 / 0 | 0.13 | 0.85 | 0.86 | 0.75 | 0.67 / 0.61 |
+| 1 | 0.14 / 0 / 0 | 0.10 | 0.84 | 0.87 | 0.79 | 0.69 / 0.65 |
+| 2 | **0.40** / 0.04 / 0.04 | 0.16 | 0.88 | 0.86 | 0.80 | 0.82 / 0.69 |
+| 4 | **0.92** / **0.40** / 0.02 | 0.18 | 0.88 | 0.84 | 0.78 | 1.00 / 0.58 |
+
+⚠⚠ Baseline 1's CRT: unusable in the latent environment; U codes are rejected in 0.58–0.69 (joint redraw, not fixed; revision 15). The Part 1 estimator's and the oracle's CRTs are calibrated (U ≤ 0.08).
+
+**Where false grounding begins** (primary metric; smallest γ with a UC rate above the level):
+
+| Method | > 0.2 | > 0.5 |
+|---|---|---|
+| Baseline 1 | **γ = 2** | γ = 4 |
+| Part 1 estimator | γ = 4 (also on its CRT and on the margin rule) | never (CRT: γ = 4) |
+| Oracle | never | never |
+
+- **Baseline 1 fails one step earlier than the Part 1 estimator, and much more strongly.** At γ = 2 it falsely grounds 40% of UC codes, against 4%; at γ = 4, 92% against 40%. The oracle stays flat.
+- **Baseline 1's floor in the latent environment** is 0.09–0.13 (U codes, and UC codes at γ = 0), lower than on b (0.19–0.22), so its rise with γ is clear here.
+- **G separation:** baseline 1's AUROC is 0.84–0.87 at every γ, against 0.99–1.00 for the Part 1 estimator and the oracle. Its GC effects are attenuated (0.75–0.80), with no over-attribution at any γ.
+- **The baseline-1 CRT is not calibrated in the latent environment.** It rejects U codes in 0.58–0.69 of cases at every γ, so its "begins at γ = 0" is an artefact.
+  - **Correction to the operational details above.** There, the joint redraw was declared conservative per code. For this architecture it is anti-conservative whenever the injected labels are the only informative actions.
+  - **Likely mechanism.** The action projector Proj_ω is shared by all codes. When every label is redrawn, the null networks learn to ignore the action pathway altogether, so every code's flip readout shrinks in the null fits. A null code's flip in the observed fit, where the G codes keep the pathway active, then looks significant.
+  - **On b,** the 182 real codes of A stay in the action vector in both the observed and the null fits, and keep the pathway in use. There, U codes are rejected in 0.07–0.10 of cases (result 2b), mildly above the nominal 0.05, in the same direction.
+  - **Therefore,** the latent baseline-1 CRT rates are not interpretable as false-grounding rates, and the b CRT rates should be read as mildly anti-conservative. The primary metric is unaffected.
+  - A per-code CRT, or null fits that keep the other codes' observed labels, would remove this. That is a decision for the user (cost: 21× the fits).
 
 ### Revision 13 (11 Nov 2026): user decisions, recorded before running anything below
 
